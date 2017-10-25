@@ -1,0 +1,16 @@
+[package]
+name = "rerast"
+version = "0.1.0"
+authors = ["David Lattimore <dml@google.com>"]
+
+[dependencies]
+rerast_macros = { path = "rerast_macros" }
+itertools = "0.5.*"
+clap = "2.*"
+json = "0.11.10"
+clippy = {version = "*", optional = true}
+
+[features]
+default = ["clippy"]
+
+[workspace]

@@ -1,0 +1,119 @@
+# Rerast
+
+Rerast is a tool for transforming Rust code using rules. A rule consists of a search pattern, a
+replacement and possibly some placeholders that can appear in both the search pattern and the
+replacement. Matching is done on syntax, not on text, so formatting doesn't matter. Placeholders are
+typed and must match the type found in the code for the rule to apply.
+
+## Usage
+
+Basic operations can be performed entirely from the commandline
+```sh
+cargo rerast --placeholders 'a: i32' --replace 'a + 1' --with 'a - 1' --colordiff
+```
+
+Alternatively you can put you rule in a Rust file
+```rust
+fn rule1(a: MyStruct, b: i32) {
+  replace!(a.foo(b) -> a.bar(Litres::new(b)));
+}
+```
+then use
+
+```sh
+cargo rerast --rules_file=my_rules.rs
+```
+
+Here we're replacing an expression that is a call to a method "foo" on the type MyStruct with an
+argument that is an i32. We're changing this into a similar method call, but to the method "bar"
+with the previous argument first passed to Litres::new.
+
+The placeholders are "a" and "b". The nae of the function "rule1" is not currently used for
+anything. In future it may be possible to selectively enable/disable rules by specifying their name,
+so it's probably a good idea to put a slightly descriptive name here. Similarly, comments placed
+before the function may in the future be displayed to users when the rule matches. This is not yet
+implemented.
+
+A function can contain multiple invocations of the replace! macro. This is useful if you want
+to do several replacements that make use of the same placeholders.
+
+Besides replace! there are several other replacement macros that can be used:
+
+* replace\_pat! - this replaces patterns. e.g. &Some(a). Such a pattern might appear in a match arm
+  or if let. Irrefutable patterns (those that are guaranteed to always match) can also be matched
+  within let statements and function arguments.
+* replace\_type - this replaces types. It's currently a bit limited in that it doesn't support
+  placeholders. Also note, if your type is just a trait you should consider using
+  replace\_trait\_ref! instead, since trait references can appear in contexts where types cannot -
+  speccifically generic bounds and where clauses.
+* replace\_trait\_ref! - this replaces references to the named trait
+
+Replacing statements is currently disabled pending a good use-case. Replacing types is currently
+disabled due to it not being able to match types in all contexts - specifically it can't match
+within type bounds or where clauses. This can probably be fixed in future if we can figure out how
+to get rustc to produce hir::Ty in these contexts (at the time of writing it seemed to just have
+names in the HIR).
+
+## Matching macro invocations
+
+Macro invocations can be matched so long as they expand to code that can be matched. Note however
+that a macro invocation will not match against the equivalent code, nor the invocation of a
+different, but identical macro. This is intentional. When verifying a match, we check that the same
+sequence of expansions was followed.
+
+## Order of operations
+
+Suppose you're replacing foo(a, b) with a && !b. Depending on what the placeholders end up matching
+and what context the entire expression is in, there may be need for extra parenthesis. For example
+if the matched code was !foo(x == 1, y == 2), if we didn't add any parenthesis, we'd end up with !x
+== 1 && !y == 2 which clearly isn't correct. Rerast detects this and adds parenthesis as needed in
+order to preserve the order or precedence found in the replacement. This would give !(x == 1 && !(y
+== 2)).
+
+## Formatting of code
+
+No reformatting of code is currently done. Unmatched code will not be affected. Replacement code is
+produced by copying the replacement code from the rule and splicing in any matched patterns. In
+future, we may adjust identation for multi-line replacements. Running rustfmt afterwards is probably
+a good idea since some identation and line lengths may not be ideal.
+
+## Recursive and overlapping matches
+
+The first matched rule wins. When some code is matched, no later rules will be applied to that
+code. However, code matched to placeholders will be searched for further matches to all rules.
+
+## Limitations
+
+* use statements are not yet updated, so depending on your rule, may need to be updated after the
+  rule is applied. This should eventually be fixed, there just wasn't time before release and it's
+  kind of tricky.
+* Your code must be able to compile for this to work.
+* Rules cannot yet refer to types, functions etc that are private to submodules. Eventually we'll
+  allow you to specify the file into which the rules should be injected which will allow them to
+  reference anything in that module.
+* Code within rustdoc is not yet processed and matched.
+* Conditional code that disabled with a cfg attribute isn't matched. It's suggested to enable all
+  features if possible when running so that as much code can be checked as possible.
+* replace_type! doesn't yet support placeholders.
+* println! cannot be matched. This is because it generates a static definition which cannot be
+  matched. Also there isn't a sufficiently strong use-case to warrant making it work.
+* Probably many bugs and missing features. Please feel free to file bugs / feature requests.
+  
+## Authors
+
+* David Lattimore
+
+## Contributing
+
+See CONTRIBUTING.md
+
+## Code of conduct
+
+This project defers to the [Rust code of conduct](https://www.rust-lang.org/en-US/conduct.html). If
+you feel someone is not adhering to the code of conduct in relation to this project, please contact
+David Lattimore. My email address is in Cargo.toml.
+
+## Disclaimer
+
+This is not an official Google product. It's released by Google only because the (original) author
+happens to work there.

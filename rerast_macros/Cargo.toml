@@ -1,0 +1,6 @@
+[package]
+name = "rerast_macros"
+version = "0.1.0"
+authors = ["David Lattimore <dml@google.com>"]
+
+[dependencies]
