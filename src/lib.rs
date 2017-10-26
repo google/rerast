@@ -63,7 +63,6 @@
 
 #![feature(rustc_private)]
 #![feature(box_syntax)]
-#![feature(conservative_impl_trait)]
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 
@@ -134,10 +133,7 @@ impl ArgBuilder {
         self
     }
 
-    // TODO: Try removing this at some point - perhaps once impl trait has stabalized. Right now it
-    // ICEs without these lifetimes. I did find the bug for this, but don't have it handy.
-    #[allow(needless_lifetimes)]
-    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a String> {
+    fn iter<'a>(&'a self) -> std::slice::Iter<'a, String> {
         self.args.iter()
     }
 

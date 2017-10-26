@@ -14,8 +14,8 @@ cargo rerast --placeholders 'a: i32' --replace 'a + 1' --with 'a - 1' --colordif
 
 Alternatively you can put you rule in a Rust file
 ```rust
-fn rule1(a: MyStruct, b: i32) {
-  replace!(a.foo(b) -> a.bar(Litres::new(b)));
+fn rule1(a: i32) {
+  replace!(a + 1 => a - 1);
 }
 ```
 then use
@@ -24,15 +24,23 @@ then use
 cargo rerast --rules_file=my_rules.rs
 ```
 
-Here we're replacing an expression that is a call to a method "foo" on the type MyStruct with an
-argument that is an i32. We're changing this into a similar method call, but to the method "bar"
-with the previous argument first passed to Litres::new.
+Here's a more complex example
 
-The placeholders are "a" and "b". The nae of the function "rule1" is not currently used for
-anything. In future it may be possible to selectively enable/disable rules by specifying their name,
-so it's probably a good idea to put a slightly descriptive name here. Similarly, comments placed
-before the function may in the future be displayed to users when the rule matches. This is not yet
-implemented.
+```rust
+use std::rc::Rc;
+fn rule1<T>(r: Rc<T>) {
+  replace!(r.clone() => Rc::clone(&r))}
+}
+```
+
+Here we're replacing calls to the clone() method on an Rc<T> with the more explicit way of cloning
+an Rc - via Rc::clone.
+
+"r" is a placeholder which will match any expression of the type specified. The name of the function
+"rule1" is not currently used for anything. In future it may be possible to selectively
+enable/disable rules by specifying their name, so it's probably a good idea to put a slightly
+descriptive name here. Similarly, comments placed before the function may in the future be displayed
+to users when the rule matches. This is not yet implemented.
 
 A function can contain multiple invocations of the replace! macro. This is useful if you want
 to do several replacements that make use of the same placeholders.
