@@ -21,8 +21,6 @@ extern crate rerast;
 
 use std::io::{self, Write};
 use rerast::{ArgBuilder, Config, RerastCompilerDriver};
-use std::fs::OpenOptions;
-use std::path::Path;
 
 // Environment variables that we use to pass data from the outer invocation of cargo-rerast through
 // to the inner invocation (where it acts as the rust compiler). Eventually we'll hopefully be able
@@ -36,10 +34,12 @@ mod var_names {
     pub const DEBUG_SNIPPET: &'static str = "RERAST_DEBUG_SNIPPET";
 }
 
-// Queries cargo to find the file for each target and touches is, so that when we run cargo check
-// with ourselves as the compiler, we can be sure that we'll get run. Hopefully eventually there'll
-// be a nicer way to integrate with cargo such that we won't need to do this.
-fn touch_source_files() -> io::Result<()> {
+// Queries cargo to find the name of the current crate, then runs cargo clean to
+// clean up artifacts for that package (but not dependencies). This is necessary
+// in order to ensure that all the files in the current crate actually get built
+// when we run cargo check. Hopefully eventually there'll be a nicer way to
+// integrate with cargo such that we won't need to do this.
+fn clean_local_targets() -> io::Result<()> {
     let output = std::process::Command::new("cargo")
         .args(vec!["metadata", "--no-deps", "--format-version=1"])
         .stdout(std::process::Stdio::piped())
@@ -51,15 +51,10 @@ fn touch_source_files() -> io::Result<()> {
         io::Error::new(io::ErrorKind::InvalidData, e.to_string())
     })?;
     for package in parsed["packages"].members() {
-        for target in package["targets"].members() {
-            if let Some(src_path) = target["src_path"].as_str() {
-                println!("touching {}", src_path);
-                OpenOptions::new()
-                    .create(false)
-                    .append(true)
-                    .write(true)
-                    .open(Path::new(src_path))?;
-            }
+        if let Some(name) = package["name"].as_str() {
+            std::process::Command::new("cargo")
+                .args(vec!["clean", "--package", name])
+                .status()?;
         }
     }
     Ok(())
@@ -121,7 +116,7 @@ fn cargo_rerast() {
         // dependencies haven't already been built, we'll try to look for matches in them - not
         // really what we want. (4) Cargo sometimes prints messages that are either not helpful or
         // outright confusing - e.g. asking the user to add --verbose.
-        touch_source_files().unwrap();
+        clean_local_targets().unwrap();
         let cargo_exit_status = std::process::Command::new("cargo")
             .env(
                 "RUSTC_WRAPPER",
