@@ -15,6 +15,7 @@
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 
+#[macro_use]
 extern crate clap;
 extern crate json;
 extern crate rerast;
@@ -202,6 +203,29 @@ impl Action {
     }
 }
 
+fn get_replacement_kind_and_arg(matches: &ArgMatches) -> Result<(&'static str, String), Error> {
+    let mut result = Vec::new();
+    if let Some(s) = matches.value_of("search") {
+        result.push(("replace", s.to_owned()));
+    }
+    if let Some(s) = matches.value_of("search_type") {
+        result.push(("replace_type", s.to_owned()));
+    }
+    if let Some(s) = matches.value_of("search_pattern") {
+        result.push(("replace_pattern", s.to_owned()));
+    }
+    if let Some(s) = matches.value_of("search_trait_ref") {
+        result.push(("replace_trait_ref", s.to_owned()));
+    }
+    if result.len() > 1 {
+        result.clear();
+    }
+    result.into_iter().next().ok_or_else(|| {
+        Error::new(
+            "If --replace_with is provided, then exactly one kind of --search* argument is required")
+    })
+}
+
 fn cargo_rerast() -> Result<(), Error> {
     let matches = clap::App::new("Rerast")
         .version("0.1")
@@ -212,9 +236,13 @@ fn cargo_rerast() -> Result<(), Error> {
                 .args_from_usage(
                     "--rules_file=[FILE] 'Path to a rule file'
                      --use=[USE_STATEMENT]... 'Use statements required by rule'
-                     --placeholders=[PLACEHOLDERS] 'e.g. <T>(o: option<T>)'
-                     --replace=[PATTERN] 'Pattern to search for'
-                     --with=[PATTERN] 'Replacement code'
+                     -p, --placeholders=[PLACEHOLDERS] 'e.g. <T>(o: option<T>)'
+                     -s, --search=[CODE] 'Expression to search for'
+                     --search_type=[CODE] 'Type to search for'
+                     --search_pattern=[CODE] 'Pattern to search for'
+                     --search_trait_ref=[TRAIT] 'Trait to search for'
+                     -r, --replace_with=[CODE] 'Replacement code'
+                     --file=[FILE]... 'Only apply to these root files and their submodules'
                      --diff_cmd=[COMMAND] 'Diff changes with the specified diff command'
                      --debug_snippet=[CODE_SNIPPET] 'A snippet of code that you think should \
                                                      match or list_all to list all checked \
@@ -231,10 +259,10 @@ fn cargo_rerast() -> Result<(), Error> {
         let config = Config {
             verbose: matches.is_present("verbose"),
             debug_snippet: matches.value_of("debug_snippet").unwrap_or("").to_owned(),
+            files: values_t!(matches.values_of("file"), String).ok(),
         };
-        let rules = if let (Some(search), Some(replacement)) =
-            (matches.value_of("replace"), matches.value_of("with"))
-        {
+        let rules = if let Some(replacement) = matches.value_of("replace_with") {
+            let (replace_kind, search) = get_replacement_kind_and_arg(matches)?;
             let mut placeholders = matches.value_of("placeholders").unwrap_or("").to_owned();
             if !placeholders.contains('(') {
                 placeholders = "(".to_owned() + &placeholders + ")";
@@ -249,19 +277,23 @@ fn cargo_rerast() -> Result<(), Error> {
             }
             rules.push_str("pub fn rule");
             rules.push_str(&placeholders);
-            rules.push_str("{replace!(");
-            rules.push_str(search);
+            rules.push_str("{");
+            rules.push_str(replace_kind);
+            rules.push_str("!(");
+            rules.push_str(&search);
             rules.push_str(" => ");
             rules.push_str(replacement);
             rules.push_str(");}");
             rules
+        } else if matches.is_present("search") || matches.is_present("search_type") || matches.is_present("search_pattern") || matches.is_present("search_trait_ref") {
+            return Err(Error::new("Searching without --replace_with is not yet implemented"));
         } else {
             "".to_owned()
         };
         let rules_file = matches.value_of("rules_file").unwrap_or("");
         if rules_file.is_empty() == rules.is_empty() {
-            eprintln!("Must specify either --rules_file or both of --search and --replacement");
-            std::process::exit(1);
+            return Err(Error::new(
+                "Must specify either --rules_file or both of --search and --replacement"));
         }
         let action = Action::from_matches(matches)?;
         if config.verbose {
@@ -293,13 +325,12 @@ fn cargo_rerast() -> Result<(), Error> {
                     }
                 }
                 Err(errors) => {
-                    eprintln!("{}", errors);
-                    std::process::exit(1);
+                    return Err(Error::new(errors.to_string()));
                 }
             }
         }
     } else {
-        panic!("Unknown mode");
+        unreachable!();
     }
     Ok(())
 }

@@ -9,10 +9,10 @@ typed and must match the type found in the code for the rule to apply.
 
 Basic operations can be performed entirely from the commandline
 ```sh
-cargo rerast --placeholders 'a: i32' --replace 'a + 1' --with 'a - 1' --colordiff
+cargo rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --diff
 ```
 
-Alternatively you can put you rule in a Rust file
+Alternatively you can put your rule in a Rust file
 ```rust
 fn rule1(a: i32) {
   replace!(a + 1 => a - 1);
@@ -22,6 +22,13 @@ then use
 
 ```sh
 cargo rerast --rules_file=my_rules.rs
+```
+Putting your rules in a file is required if you want to apply multiple rules at once.
+
+If you'd like to actually update your files, that can be done as follows:
+
+```sh
+cargo rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --force --backup
 ```
 
 Here's a more complex example

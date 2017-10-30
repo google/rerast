@@ -67,7 +67,6 @@ macro_rules! replace_type {
 macro_rules! replace_trait_ref {
     ($a:ty => $b:ty) => {
         {
-            use $crate;
             use $crate::GetMode;
             match $crate::_TraitRefRuleMarker.get_mode() {
                 $crate::Mode::Search => {

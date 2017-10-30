@@ -107,10 +107,14 @@ macro_rules! debug {
     }
 }
 
+/// Very little thought has gone into the public interface of this library. Things that are pub are
+/// mostly that way so they can be accessed from cargo-rerast. If you have a use-case for using this
+/// library, it's probably best to discuss it so that we can nail down a more thought-out interface.
 #[derive(Debug, Clone, Default)]
 pub struct Config {
     pub verbose: bool,
     pub debug_snippet: String,
+    pub files: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -2737,6 +2741,14 @@ impl RerastCompilerDriver {
                 "Couldn't find source filename with .rs extension in the supplied arguments",
             )
         })?;
+        if let Some(ref restrict_files) = config.files {
+            if !restrict_files.iter().any(|e| e == code_filename) {
+                if config.verbose {
+                    println!("Skipping {} due to --files", code_filename);
+                }
+                return Ok(RerastOutput::new());
+            }
+        }
         let code_path = PathBuf::from(code_filename);
         file_loader.add_file(
             code_path.with_file_name(RULES_MOD_NAME.to_owned() + ".rs"),
