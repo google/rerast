@@ -67,7 +67,10 @@ names in the HIR).
 Macro invocations can be matched so long as they expand to code that can be matched. Note however
 that a macro invocation will not match against the equivalent code, nor the invocation of a
 different, but identical macro. This is intentional. When verifying a match, we check that the same
-sequence of expansions was followed.
+sequence of expansions was followed. Also note, that if a macro expands to something different every
+time it is invoked, it will never match. println! is an example of such a macro, since it generates
+a constant that is referenced from the expanded code and every invocation references a different
+constant.
 
 ## Order of operations
 
@@ -103,13 +106,11 @@ code. However, code matched to placeholders will be searched for further matches
 * Conditional code that disabled with a cfg attribute isn't matched. It's suggested to enable all
   features if possible when running so that as much code can be checked as possible.
 * replace_type! doesn't yet support placeholders.
-* println! cannot be matched. This is because it generates a static definition which cannot be
-  matched. Also there isn't a sufficiently strong use-case to warrant making it work.
 * Probably many bugs and missing features. Please feel free to file bugs / feature requests.
   
 ## Authors
 
-* David Lattimore
+See Cargo.toml
 
 ## Contributing
 

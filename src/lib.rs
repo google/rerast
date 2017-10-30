@@ -1,11 +1,11 @@
 // Copyright 2017 Google Inc.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     https://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -109,6 +109,7 @@ macro_rules! debug {
 
 #[derive(Debug, Clone, Default)]
 pub struct Config {
+    pub verbose: bool,
     pub debug_snippet: String,
 }
 
@@ -122,9 +123,9 @@ impl ArgBuilder {
         ArgBuilder { args: Vec::new() }
     }
 
-    pub fn from_args<T: Iterator<Item = String>>(args: T) -> ArgBuilder {
+    pub fn from_args<T: Iterator<Item = S>, S: Into<String>>(args: T) -> ArgBuilder {
         ArgBuilder {
-            args: args.collect(),
+            args: args.map(|s| s.into()).collect(),
         }
     }
 
@@ -1043,7 +1044,12 @@ impl Matchable for hir::Expr {
                 false
             }
             _ => {
-                debug!(state, "Expression:   {:?}\ndidn't match: {:?}", code.node, self.node);
+                debug!(
+                    state,
+                    "Expression:   {:?}\ndidn't match: {:?}",
+                    code.node,
+                    self.node
+                );
                 false
             }
         };
@@ -2266,7 +2272,9 @@ fn find_and_apply_rules<'a, 'gcx>(
                 .collect(),
         )
     })?;
-    println!("Found {} rule(s)", rules.len());
+    if config.verbose {
+        println!("Found {} rule(s)", rules.len());
+    }
     let replacer = Replacer::new(tcx, rerast_definitions, rules, config);
     Ok(RerastOutput {
         updated_files: replacer.apply_to_crate(krate),
@@ -2680,7 +2688,7 @@ impl RerastCompilerDriver {
         }
     }
 
-    fn code_filename(&self) -> Option<&str> {
+    pub fn code_filename(&self) -> Option<&str> {
         self.args
             .iter()
             .skip(1)
@@ -3655,7 +3663,8 @@ mod tests {
             "",
             "fn r1(i: i32) {replace!(i + 1 => i - 2);}",
             "fn f1(o: Option<i32>) -> Option<i32> {o.map(|v| v + 1)}",
-            "fn f1(o: Option<i32>) -> Option<i32> {o.map(|v| v - 2)}");
+            "fn f1(o: Option<i32>) -> Option<i32> {o.map(|v| v - 2)}",
+        );
     }
 
     // Check that we can still replace nested matches within a placeholder-only expression.
