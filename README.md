@@ -116,7 +116,11 @@ code. However, code matched to placeholders will be searched for further matches
   features if possible when running so that as much code can be checked as possible.
 * replace_type! doesn't yet support placeholders.
 * Probably many bugs and missing features. Please feel free to file bugs / feature requests.
-  
+
+## Groups
+* [Users group](https://groups.google.com/forum/#!forum/rerast-users)
+* [Developers group](https://groups.google.com/forum/#!forum/rerast-dev)
+
 ## Authors
 
 See Cargo.toml
