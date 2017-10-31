@@ -63,7 +63,7 @@ Besides replace! there are several other replacement macros that can be used:
 * replace\_patttern! - this replaces patterns. e.g. &Some(a). Such a pattern might appear in a match
   arm or if let. Irrefutable patterns (those that are guaranteed to always match) can also be
   matched within let statements and function arguments.
-* replace\_type - this replaces types. It's currently a bit limited in that it doesn't support
+* replace\_type! - this replaces types. It's currently a bit limited in that it doesn't support
   placeholders. Also note, if your type is just a trait you should consider using
   replace\_trait\_ref! instead, since trait references can appear in contexts where types cannot -
   speccifically generic bounds and where clauses.
@@ -127,7 +127,7 @@ See Cargo.toml
 
 ## Contributing
 
-See CONTRIBUTING.md
+See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Code of conduct
 
