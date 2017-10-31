@@ -5,6 +5,12 @@ replacement and possibly some placeholders that can appear in both the search pa
 replacement. Matching is done on syntax, not on text, so formatting doesn't matter. Placeholders are
 typed and must match the type found in the code for the rule to apply.
 
+## Installation
+
+```sh
+cargo +nightly install rerast
+```
+
 ## Usage
 
 Basic operations can be performed entirely from the commandline
