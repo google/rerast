@@ -15,7 +15,7 @@ cargo +nightly install rerast
 
 Basic operations can be performed entirely from the commandline
 ```sh
-cargo rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --diff
+cargo +nightly rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --diff
 ```
 
 Alternatively you can put your rule in a Rust file
@@ -27,14 +27,14 @@ fn rule1(a: i32) {
 then use
 
 ```sh
-cargo rerast --rules_file=my_rules.rs
+cargo +nightly rerast --rules_file=my_rules.rs
 ```
 Putting your rules in a file is required if you want to apply multiple rules at once.
 
 If you'd like to actually update your files, that can be done as follows:
 
 ```sh
-cargo rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --force --backup
+cargo +nightly rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --force --backup
 ```
 
 Here's a more complex example
