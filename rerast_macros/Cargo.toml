@@ -3,7 +3,7 @@ name = "rerast_macros"
 version = "0.1.0"
 description = "Macros for use in Rerast rules"
 repository = "https://github.com/google/rerast"
-license = "Apache 2.0"
+license = "Apache-2.0"
 authors = ["David Lattimore <dml@google.com>"]
 
 [dependencies]
