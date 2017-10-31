@@ -60,20 +60,16 @@ to do several replacements that make use of the same placeholders.
 
 Besides replace! there are several other replacement macros that can be used:
 
-* replace\_pat! - this replaces patterns. e.g. &Some(a). Such a pattern might appear in a match arm
-  or if let. Irrefutable patterns (those that are guaranteed to always match) can also be matched
-  within let statements and function arguments.
+* replace\_patttern! - this replaces patterns. e.g. &Some(a). Such a pattern might appear in a match
+  arm or if let. Irrefutable patterns (those that are guaranteed to always match) can also be
+  matched within let statements and function arguments.
 * replace\_type - this replaces types. It's currently a bit limited in that it doesn't support
   placeholders. Also note, if your type is just a trait you should consider using
   replace\_trait\_ref! instead, since trait references can appear in contexts where types cannot -
   speccifically generic bounds and where clauses.
 * replace\_trait\_ref! - this replaces references to the named trait
 
-Replacing statements is currently disabled pending a good use-case. Replacing types is currently
-disabled due to it not being able to match types in all contexts - specifically it can't match
-within type bounds or where clauses. This can probably be fixed in future if we can figure out how
-to get rustc to produce hir::Ty in these contexts (at the time of writing it seemed to just have
-names in the HIR).
+Replacing statements is currently disabled pending a good use-case.
 
 ## Matching macro invocations
 
