@@ -151,6 +151,37 @@ impl ArgBuilder {
     }
 }
 
+// Allow rules files to contain extern crate rerast_macros and an corresponding
+// #[macro_use]. Replace these lines if present with empty lines so that the
+// rule compiles once it's in the context of a submodule.
+fn remove_extern_crate_rerast_from_rules(rules: &str) -> String {
+    let mut result = String::new();
+    let mut opt_pending_line = None;
+    for line in rules.lines() {
+        if line.trim() == "#[macro_use] extern crate rerast_macros;" {
+            result.push('\n');
+        } else if line.trim() == "extern crate rerast_macros;" {
+            result.push('\n');
+            if opt_pending_line.is_some() {
+                result.push('\n');
+            }
+            opt_pending_line = None;
+        } else {
+            if let Some(pending_line) = opt_pending_line.take() {
+                result.push_str(pending_line);
+                result.push('\n');
+            }
+            if line.trim() == "#[macro_use]" {
+                opt_pending_line = Some(line);
+            } else {
+                result.push_str(line);
+                result.push('\n');
+            }
+        }
+    }
+    result
+}
+
 // We inject our rules as a submodule of the root of the crate. We do this by just appending some
 // content to the end of the file. It may be possible to inject our module(s) via a similar
 // mechanism to what's used by maybe_inject_crates_ref in libsyntax/std_inject.rs. For now, we go
@@ -2717,6 +2748,7 @@ impl RerastCompilerDriver {
         } else {
             rules
         };
+        let rules = remove_extern_crate_rerast_from_rules(&rules);
         self.apply_rules_to_code(file_loader, rules, config)
     }
 
@@ -4171,5 +4203,26 @@ mod tests {
             "fn f(data: &[i32]) -> i32 {data[0]}",
             "fn f(data: &[i32]) -> i32 {data.get(0).unwrap()}",
         );
+    }
+
+    #[test]
+    fn test_remove_extern_crate_rerast_from_rules() {
+        let rules = r#"
+            // foo
+            #[macro_use] extern crate rerast_macros;
+            #[macro_use]
+            extern crate foo;
+            #[macro_use]
+            extern crate rerast_macros;
+            // bar"#;
+        let rules = remove_extern_crate_rerast_from_rules(&rules);
+        assert_eq!(rules, r#"
+            // foo
+
+            #[macro_use]
+            extern crate foo;
+
+
+            // bar"#.to_owned() + "\n");
     }
 }
