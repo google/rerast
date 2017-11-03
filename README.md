@@ -13,7 +13,7 @@ cargo +nightly install rerast
 
 ## Usage
 
-Basic operations can be performed entirely from the commandline
+Basic operations can be performed entirely from the command line
 ```sh
 cargo +nightly rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --diff
 ```
@@ -66,7 +66,7 @@ Besides replace! there are several other replacement macros that can be used:
 * replace\_type! - this replaces types. It's currently a bit limited in that it doesn't support
   placeholders. Also note, if your type is just a trait you should consider using
   replace\_trait\_ref! instead, since trait references can appear in contexts where types cannot -
-  speccifically generic bounds and where clauses.
+  specifically generic bounds and where clauses.
 * replace\_trait\_ref! - this replaces references to the named trait
 
 Replacing statements is currently disabled pending a good use-case.
@@ -104,11 +104,11 @@ code. However, code matched to placeholders will be searched for further matches
 
 ## Limitations
 
-* use statements are not yet updated, so depending on your rule, may need to be updated after the
+* Use statements are not yet updated, so depending on your rule, may need to be updated after the
   rule is applied. This should eventually be fixed, there just wasn't time before release and it's
   kind of tricky.
 * Your code must be able to compile for this to work.
-* Rules cannot yet refer to types, functions etc that are private to submodules. Eventually we'll
+* Rules cannot yet refer to types, functions, etc that are private to submodules. Eventually we'll
   allow you to specify the file into which the rules should be injected which will allow them to
   reference anything in that module.
 * Code within rustdoc is not yet processed and matched.
