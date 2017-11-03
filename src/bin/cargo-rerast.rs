@@ -221,15 +221,12 @@ fn get_replacement_kind_and_arg(matches: &ArgMatches) -> Result<(&'static str, S
         result.clear();
     }
     result.into_iter().next().ok_or_else(|| {
-        Error::new(
-            "If --replace_with is provided, then exactly one kind of --search* argument is required")
+        Error::new("--replace_with requires exactly one kind of --search* argument is required.")
     })
 }
 
 fn cargo_rerast() -> Result<(), Error> {
     let matches = clap::App::new("Rerast")
-        .version("0.1")
-        .author("David Lattimore <dml@google.com>")
         .subcommand(
             clap::SubCommand::with_name("rerast")
                 .about("Replace Rust code based on typed, syntactic patterns")
@@ -285,15 +282,21 @@ fn cargo_rerast() -> Result<(), Error> {
             rules.push_str(replacement);
             rules.push_str(");}");
             rules
-        } else if matches.is_present("search") || matches.is_present("search_type") || matches.is_present("search_pattern") || matches.is_present("search_trait_ref") {
-            return Err(Error::new("Searching without --replace_with is not yet implemented"));
+        } else if matches.is_present("search") || matches.is_present("search_type")
+            || matches.is_present("search_pattern")
+            || matches.is_present("search_trait_ref")
+        {
+            return Err(Error::new(
+                "Searching without --replace_with is not yet implemented",
+            ));
         } else {
             "".to_owned()
         };
         let rules_file = matches.value_of("rules_file").unwrap_or("");
         if rules_file.is_empty() == rules.is_empty() {
             return Err(Error::new(
-                "Must specify either --rules_file or both of --search and --replacement"));
+                "Must specify either --rules_file or both of --search and --replacement",
+            ));
         }
         let action = Action::from_matches(matches)?;
         if config.verbose {
@@ -345,19 +348,24 @@ fn pass_through_to_actual_compiler() {
 
 pub fn main() {
     let driver = RerastCompilerDriver::new(ArgBuilder::from_args(std::env::args().skip(1)));
-    // If cargo is calling us to get compiler configuration or is compiling a dependent crate, then
-    // just run the compiler normally.
-    if driver.args().has_arg("--print=cfg") || driver.is_compiling_dependency() {
-        pass_through_to_actual_compiler();
-    } else if let Ok(_) = std::env::var(var_names::PRINT_ARGS_JSON) {
-        let json_args: Vec<JsonValue> = std::env::args().map(|a| JsonValue::String(a)).collect();
-        println!("{}{}", JSON_ARGS_MARKER, JsonValue::Array(json_args).dump());
-        pass_through_to_actual_compiler();
-    } else if let Some(arg1) = std::env::args().nth(1) {
-        if arg1 == "rerast" {
-            if let Err(error) = cargo_rerast() {
-                eprintln!("{}", error.message);
-            }
+    if let Ok(_) = std::env::var(var_names::PRINT_ARGS_JSON) {
+        // If cargo is calling us to get compiler configuration or is compiling
+        // a dependent crate, thenp just run the compiler normally.
+        if driver.args().has_arg("--print=cfg") || driver.is_compiling_dependency() {
+            pass_through_to_actual_compiler();
+        } else {
+            let json_args: Vec<JsonValue> =
+                std::env::args().map(|a| JsonValue::String(a)).collect();
+            println!("{}{}", JSON_ARGS_MARKER, JsonValue::Array(json_args).dump());
+            pass_through_to_actual_compiler();
+        }
+    } else if std::env::args()
+        .nth(1)
+        .map(|arg| arg == "rerast")
+        .unwrap_or(false)
+    {
+        if let Err(error) = cargo_rerast() {
+            eprintln!("{}", error.message);
         }
     }
 }
