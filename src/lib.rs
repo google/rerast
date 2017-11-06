@@ -55,7 +55,7 @@
 // user asks to replace a macro invocation with something else, we don't want to match code that
 // does the same thing as the macro, but without using the macro. To achieve this, we traverse the
 // expanstion info for both the rule and the code in parallel. If at any point the two are applying
-// different expansions, we reject the match. This is done by RuleMatcher::get_original_span.
+// different expansions, we reject the match. This is done by RuleMatcher::get_original_spans.
 //
 // Note, everything is in this one file because I find it easier to work with. No need to switch
 // files. Just do an incremental search for whatever I'm looking for. That said, I might be open to
@@ -81,7 +81,7 @@ use syntax::symbol::Symbol;
 use syntax::codemap::{self, CodeMap, Spanned};
 use syntax::ptr::P;
 use syntax::ext::quote::rt::Span;
-use syntax_pos::{FileLinesResult, SpanLinesError, SyntaxContext};
+use syntax_pos::{FileLinesResult, SpanLinesError, SpanSnippetError, SyntaxContext};
 use std::vec::Vec;
 use std::collections::{HashMap, HashSet};
 use rustc_driver::{driver, Compilation, CompilerCalls, RustcDefaultCalls};
@@ -217,23 +217,24 @@ fn span_within_span(span: Span, target: Span) -> Span {
     }
 }
 
-// Recursively searches the expansion of search_span and code_span in parallel. Once the next
-// expansion in search_span is the replace! macro, stop and return the current code_span. If at any
-// point the expansions performed by the two spans are different, then that means the search pattern
-// and the code invoked different macros, so we return None.
-fn get_original_span(search_span: Span, code_span: Span) -> Option<Span> {
-    if let Some(search_expn) = search_span.ctxt().outer().expn_info() {
-        if let Some(code_expn) = code_span.ctxt().outer().expn_info() {
+// Recursively searches the expansion of search_span and code_span in parallel. If at any point the
+// expansions performed by the two spans are different, then that means the search pattern and the
+// code invoked different macros, so returns None. If both reach the top (no expansions remaining)
+// together, then returns their spans.
+fn get_original_spans(search_span: Span, code_span: Span) -> Option<(Span, Span)> {
+    match (
+        search_span.ctxt().outer().expn_info(),
+        code_span.ctxt().outer().expn_info(),
+    ) {
+        (Some(search_expn), Some(code_expn)) => {
             if is_same_expansion(&search_expn.callee, &code_expn.callee) {
-                get_original_span(search_expn.call_site, code_expn.call_site)
+                get_original_spans(search_expn.call_site, code_expn.call_site)
             } else {
                 None
             }
-        } else {
-            None
         }
-    } else {
-        Some(code_span)
+        (None, None) => Some((search_span, code_span)),
+        _ => None,
     }
 }
 
@@ -249,6 +250,11 @@ fn is_same_expansion(a: &codemap::NameAndSpan, b: &codemap::NameAndSpan) -> bool
     }
 }
 
+// Returns whether following the expansions of `rule_span` and `code_span` results in the same
+// sequence of expansions.
+fn all_expansions_equal(rule_span: Span, code_span: Span) -> bool {
+    get_original_spans(rule_span, code_span).is_some()
+}
 
 fn node_id_from_path(q_path: &hir::QPath) -> Option<NodeId> {
     use hir::def::Def::*;
@@ -707,6 +713,10 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     fn code_type_tables(&self) -> &'gcx ty::TypeckTables<'gcx> {
         self.tcx.body_tables(self.body_id.unwrap())
     }
+
+    fn span_to_snippet(&self, span: Span) -> Result<String, SpanSnippetError> {
+        self.tcx.sess.codemap().span_to_snippet(span)
+    }
 }
 
 // Trait implemented by types that we can match (as opposed to be part of a match).
@@ -972,7 +982,19 @@ impl Matchable for hir::Expr {
             (&ExprAddrOf(p_mut, ref p_expr), &ExprAddrOf(c_mut, ref c_expr)) => {
                 p_mut == c_mut && p_expr.attempt_match(state, c_expr)
             }
-            (&ExprLit(ref p_lit), &ExprLit(ref c_lit)) => p_lit.node == c_lit.node,
+            (&ExprLit(ref p_lit), &ExprLit(ref c_lit)) => {
+                p_lit.node == c_lit.node || {
+                    if let Some((p_span, c_span)) = get_original_spans(self.span, code.span) {
+                        // It's a bit unfortunate, but it seems that macros like file! and line!
+                        // have no expansion info, so the only way we can tell if we've got the same
+                        // macro invocation is to look at the code. Fortunately there aren't too
+                        // many ways to invoke a macro like file! or line!.
+                        state.span_to_snippet(p_span) == state.span_to_snippet(c_span)
+                    } else {
+                        false
+                    }
+                }
+            }
             (
                 &ExprLoop(ref p_block, ref p_name, ref p_type),
                 &ExprLoop(ref c_block, ref c_name, ref c_type),
@@ -1088,21 +1110,7 @@ impl Matchable for hir::Expr {
                 false
             }
         };
-        if result {
-            // A literal (non-placeholder expression) matched. Verify that our rule and our code
-            // were derived from the same macro expansion or desugaring if any.
-            if let Some(code_span) = get_original_span(self.span(), code.span()) {
-                if code_span.ctxt().outer().expn_info().is_some() {
-                    // The code had additional expansion(s) not found in the rule.
-                    debug!(state, "Found expr");
-                    return false;
-                }
-            } else {
-                // The rule had additional or different expansion(s) not found in the code.
-                return false;
-            }
-        }
-        result
+        result && all_expansions_equal(self.span, code.span())
     }
 }
 
@@ -1940,7 +1948,7 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
         self.debug_active = self.should_debug_node(node);
         debug!(self, "node: {:?}", node);
         for rule in rules {
-            if let Some(original_span) = get_original_span(rule.search.span(), node.span()) {
+            if let Some((_, original_span)) = get_original_spans(rule.search.span(), node.span()) {
                 let m = self.get_match(node, parent_node, original_span, rule);
                 if m.is_some() {
                     debug!(self, "Matched");
@@ -4206,6 +4214,20 @@ mod tests {
     }
 
     #[test]
+    fn file_and_line_macros() {
+        check(
+            "macro_rules! foo {() => {file!()}}",
+            r#"fn rule() {
+                 replace!(file!() => "filename");
+                 replace!(line!() => 42);
+                 replace!(foo!() => "foo-filename");
+               }"#,
+            r#"fn f1() {println!("{}{}{}", file!(), line!(), foo!());}"#,
+            r#"fn f1() {println!("{}{}{}", "filename", 42, "foo-filename");}"#,
+        );
+    }
+
+    #[test]
     fn test_remove_extern_crate_rerast_from_rules() {
         let rules = r#"
             // foo
@@ -4216,13 +4238,16 @@ mod tests {
             extern crate rerast_macros;
             // bar"#;
         let rules = remove_extern_crate_rerast_from_rules(&rules);
-        assert_eq!(rules, r#"
+        assert_eq!(
+            rules,
+            r#"
             // foo
 
             #[macro_use]
             extern crate foo;
 
 
-            // bar"#.to_owned() + "\n");
+            // bar"#.to_owned() + "\n"
+        );
     }
 }
