@@ -66,6 +66,8 @@
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 
+extern crate colored;
+extern crate diff;
 extern crate getopts;
 extern crate itertools;
 extern crate rerast_macros;
@@ -98,6 +100,8 @@ use rustc::traits::{ObligationCause, Reveal};
 use rustc::ty::subst::Subst;
 use rustc::infer::{self, InferCtxt};
 use std::fmt::{self, Debug};
+
+pub mod chunked_diff;
 
 macro_rules! debug {
     ($state:expr, $($args:expr),*) => {

@@ -17,14 +17,17 @@
 
 #[macro_use]
 extern crate clap;
+extern crate colored;
 extern crate json;
 extern crate rerast;
 
 use json::{JsonError, JsonValue};
 use std::io::{self, Write};
 use rerast::{ArgBuilder, Config, RerastCompilerDriver};
+use rerast::chunked_diff;
 use std::str::Utf8Error;
-use std::fs;
+use std::fs::{self, File};
+use std::io::prelude::*;
 use clap::ArgMatches;
 
 #[derive(Clone, Debug)]
@@ -137,7 +140,8 @@ fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error>
 }
 
 enum Action {
-    Diff(String),
+    Diff,
+    DiffCmd(String),
     ForceWrite { backup: bool },
 }
 
@@ -145,10 +149,10 @@ impl Action {
     fn from_matches(matches: &ArgMatches) -> Result<Action, Error> {
         let mut actions = Vec::new();
         if matches.is_present("diff") {
-            actions.push(Action::Diff("diff -u".to_owned()))
+            actions.push(Action::Diff)
         }
         if let Some(diff_cmd) = matches.value_of("diff_cmd") {
-            actions.push(Action::Diff(diff_cmd.to_owned()));
+            actions.push(Action::DiffCmd(diff_cmd.to_owned()));
         }
         if matches.is_present("force") {
             actions.push(Action::ForceWrite {
@@ -165,7 +169,12 @@ impl Action {
 
     fn process(&self, filename: &str, new_contents: &str) -> Result<(), Error> {
         match *self {
-            Action::Diff(ref diff_cmd) => {
+            Action::Diff => {
+                let mut current_contents = String::new();
+                File::open(filename)?.read_to_string(&mut current_contents)?;
+                chunked_diff::print_diff(filename, &current_contents, new_contents);
+            }
+            Action::DiffCmd(ref diff_cmd) => {
                 // rustfmt has a native diff built-in. If that were extracted into a separate crate,
                 // we could reuse that instead of calling out to an external diff.
                 let mut diff_cmd_iter = diff_cmd.split(" ");
@@ -241,6 +250,7 @@ fn cargo_rerast() -> Result<(), Error> {
                      -r, --replace_with=[CODE] 'Replacement code'
                      --file=[FILE]... 'Only apply to these root files and their submodules'
                      --diff_cmd=[COMMAND] 'Diff changes with the specified diff command'
+                     --color=[always/never] 'Force color on or off'
                      --debug_snippet=[CODE_SNIPPET] 'A snippet of code that you think should \
                                                      match or list_all to list all checked \
                                                      snippets.'
@@ -258,6 +268,12 @@ fn cargo_rerast() -> Result<(), Error> {
             debug_snippet: matches.value_of("debug_snippet").unwrap_or("").to_owned(),
             files: values_t!(matches.values_of("file"), String).ok(),
         };
+        match matches.value_of("color") {
+            Some("always") => colored::control::set_override(true),
+            Some("never") => colored::control::set_override(false),
+            Some(_) => return Err(Error::new("Invalid value for --color")),
+            _ => {}
+        }
         let rules = if let Some(replacement) = matches.value_of("replace_with") {
             let (replace_kind, search) = get_replacement_kind_and_arg(matches)?;
             let mut placeholders = matches.value_of("placeholders").unwrap_or("").to_owned();

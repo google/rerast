@@ -15,6 +15,8 @@ rerast_macros = { version = "0.1.0", path = "rerast_macros" }
 itertools = "0.5.*"
 clap = "2.*"
 json = "0.11.10"
+diff = "0.1.10"
+colored = "1.6.0"
 clippy = {version = "0.*", optional = true}
 
 [features]
