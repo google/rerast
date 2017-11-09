@@ -234,7 +234,7 @@ fn get_replacement_kind_and_arg(matches: &ArgMatches) -> Result<(&'static str, S
     })
 }
 
-fn cargo_rerast() -> Result<(), Error> {
+fn cargo_rerast(args: &[String]) -> Result<(), Error> {
     let matches = clap::App::new("Rerast")
         .subcommand(
             clap::SubCommand::with_name("rerast")
@@ -261,7 +261,7 @@ fn cargo_rerast() -> Result<(), Error> {
                      --verbose 'Print additional information about what's happening'",
                 ),
         )
-        .get_matches();
+        .get_matches_from(args);
     if let Some(matches) = matches.subcommand_matches("rerast") {
         let config = Config {
             verbose: matches.is_present("verbose"),
@@ -375,13 +375,15 @@ pub fn main() {
             println!("{}{}", JSON_ARGS_MARKER, JsonValue::Array(json_args).dump());
             pass_through_to_actual_compiler();
         }
-    } else if std::env::args()
-        .nth(1)
-        .map(|arg| arg == "rerast")
-        .unwrap_or(false)
-    {
-        if let Err(error) = cargo_rerast() {
-            eprintln!("{}", error.message);
+    } else {
+        let mut args: Vec<String> = std::env::args().collect();
+        if args.get(1).map(|a| a == "rerast").unwrap_or(false) {
+            // We were run as "cargo-rerast rerast", but we want the help message to say "cargo
+            // rerast" which is what the user would have run.
+            args[0] = "cargo".to_owned();
+            if let Err(error) = cargo_rerast(&args) {
+                eprintln!("{}", error.message);
+            }
         }
     }
 }
