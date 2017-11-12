@@ -100,7 +100,7 @@ fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error>
     let cargo_check_output = std::process::Command::new("cargo")
         .env(var_names::PRINT_ARGS_JSON, "yes")
         .env("RUSTC_WRAPPER", current_exe)
-        .args(vec!["check", "-v"])
+        .args(vec!["check", "-v", "--tests", "--benches", "--examples"])
         .stdout(std::process::Stdio::piped())
         .output()
         .expect("Failed to invoke cargo");
