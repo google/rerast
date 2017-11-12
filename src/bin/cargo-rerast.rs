@@ -126,10 +126,12 @@ fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error>
             if let JsonValue::Array(values) = parsed {
                 let args: Result<Vec<String>, Error> = values
                     .into_iter()
-                    .map(|v| if let Some(s) = v.as_str() {
-                        Ok(s.to_owned())
-                    } else {
-                        Err(Error::new(format!("Expected JSON string, got: {:?}", v)))
+                    .map(|v| {
+                        if let Some(s) = v.as_str() {
+                            Ok(s.to_owned())
+                        } else {
+                            Err(Error::new(format!("Expected JSON string, got: {:?}", v)))
+                        }
                     })
                     .collect();
                 result.push(args?);
@@ -234,7 +236,10 @@ fn get_replacement_kind_and_arg(matches: &ArgMatches) -> Result<(&'static str, S
     })
 }
 
-fn cargo_rerast(args: &[String]) -> Result<(), Error> {
+fn cargo_rerast() -> Result<(), Error> {
+    let mut args: Vec<String> = std::env::args().collect();
+    // We want the help message to say "cargo rerast" not "cargo-rerast rerast".
+    args[0] = "cargo".to_owned();
     let matches = clap::App::new("Rerast")
         .subcommand(
             clap::SubCommand::with_name("rerast")
@@ -261,95 +266,92 @@ fn cargo_rerast(args: &[String]) -> Result<(), Error> {
                      --verbose 'Print additional information about what's happening'",
                 ),
         )
-        .get_matches_from(args);
-    if let Some(matches) = matches.subcommand_matches("rerast") {
-        let config = Config {
-            verbose: matches.is_present("verbose"),
-            debug_snippet: matches.value_of("debug_snippet").unwrap_or("").to_owned(),
-            files: values_t!(matches.values_of("file"), String).ok(),
-        };
-        match matches.value_of("color") {
-            Some("always") => colored::control::set_override(true),
-            Some("never") => colored::control::set_override(false),
-            Some(_) => return Err(Error::new("Invalid value for --color")),
-            _ => {}
+        .get_matches_from(&args);
+    let matches = matches.subcommand_matches("rerast").ok_or_else(|| {
+        Error::new("This binary is intended to be run as `cargo rerast` not run directly.")
+    })?;
+    let config = Config {
+        verbose: matches.is_present("verbose"),
+        debug_snippet: matches.value_of("debug_snippet").unwrap_or("").to_owned(),
+        files: values_t!(matches.values_of("file"), String).ok(),
+    };
+    match matches.value_of("color") {
+        Some("always") => colored::control::set_override(true),
+        Some("never") => colored::control::set_override(false),
+        Some(_) => return Err(Error::new("Invalid value for --color")),
+        _ => {}
+    }
+    let rules = if let Some(replacement) = matches.value_of("replace_with") {
+        let (replace_kind, search) = get_replacement_kind_and_arg(matches)?;
+        let mut placeholders = matches.value_of("placeholders").unwrap_or("").to_owned();
+        if !placeholders.contains('(') {
+            placeholders = "(".to_owned() + &placeholders + ")";
         }
-        let rules = if let Some(replacement) = matches.value_of("replace_with") {
-            let (replace_kind, search) = get_replacement_kind_and_arg(matches)?;
-            let mut placeholders = matches.value_of("placeholders").unwrap_or("").to_owned();
-            if !placeholders.contains('(') {
-                placeholders = "(".to_owned() + &placeholders + ")";
-            }
-            let mut rules = String::new();
-            if let Some(deps) = matches.values_of("use") {
-                for dependency in deps {
-                    rules.push_str("use ");
-                    rules.push_str(dependency);
-                    rules.push_str(";\n");
-                }
-            }
-            rules.push_str("pub fn rule");
-            rules.push_str(&placeholders);
-            rules.push_str("{");
-            rules.push_str(replace_kind);
-            rules.push_str("!(");
-            rules.push_str(&search);
-            rules.push_str(" => ");
-            rules.push_str(replacement);
-            rules.push_str(");}");
-            rules
-        } else if matches.is_present("search") || matches.is_present("search_type")
-            || matches.is_present("search_pattern")
-            || matches.is_present("search_trait_ref")
-        {
-            return Err(Error::new(
-                "Searching without --replace_with is not yet implemented",
-            ));
-        } else {
-            "".to_owned()
-        };
-        let rules_file = matches.value_of("rules_file").unwrap_or("");
-        if rules_file.is_empty() == rules.is_empty() {
-            return Err(Error::new(
-                "Must specify either --rules_file or both of --search and --replacement",
-            ));
-        }
-        let action = Action::from_matches(matches)?;
-        if config.verbose {
-            println!("Running cargo check in order to build dependencies and get rustc commands");
-        }
-        let rustc_command_lines = get_rustc_commandlines_for_local_package()?;
-
-        for rustc_args in &rustc_command_lines {
-            let driver = RerastCompilerDriver::new(
-                ArgBuilder::from_args(rustc_args.iter().skip(1).cloned()),
-            );
-            let code_filename = driver.code_filename().ok_or_else(|| {
-                Error::new(format!(
-                    "Failed to determine code filename from: {:?}",
-                    &rustc_args[2..]
-                ))
-            })?;
-            if config.verbose {
-                println!("Processing {}", code_filename);
-            }
-            match driver.apply_rules_from_string_or_file(rules.clone(), &rules_file, config.clone())
-            {
-                Ok(output) => {
-                    if config.verbose && output.updated_files.is_empty() {
-                        println!("No matches found in {} or submodules", code_filename);
-                    }
-                    for (filename, new_contents) in output.updated_files {
-                        action.process(&filename, &new_contents)?;
-                    }
-                }
-                Err(errors) => {
-                    return Err(Error::new(errors.to_string()));
-                }
+        let mut rules = String::new();
+        if let Some(deps) = matches.values_of("use") {
+            for dependency in deps {
+                rules.push_str("use ");
+                rules.push_str(dependency);
+                rules.push_str(";\n");
             }
         }
+        rules.push_str("pub fn rule");
+        rules.push_str(&placeholders);
+        rules.push_str("{");
+        rules.push_str(replace_kind);
+        rules.push_str("!(");
+        rules.push_str(&search);
+        rules.push_str(" => ");
+        rules.push_str(replacement);
+        rules.push_str(");}");
+        rules
+    } else if matches.is_present("search") || matches.is_present("search_type")
+        || matches.is_present("search_pattern")
+        || matches.is_present("search_trait_ref")
+    {
+        return Err(Error::new(
+            "Searching without --replace_with is not yet implemented",
+        ));
     } else {
-        unreachable!();
+        "".to_owned()
+    };
+    let rules_file = matches.value_of("rules_file").unwrap_or("");
+    if rules_file.is_empty() == rules.is_empty() {
+        return Err(Error::new(
+            "Must specify either --rules_file or both of --search and --replacement",
+        ));
+    }
+    let action = Action::from_matches(matches)?;
+    if config.verbose {
+        println!("Running cargo check in order to build dependencies and get rustc commands");
+    }
+    let rustc_command_lines = get_rustc_commandlines_for_local_package()?;
+
+    for rustc_args in &rustc_command_lines {
+        let driver =
+            RerastCompilerDriver::new(ArgBuilder::from_args(rustc_args.iter().skip(1).cloned()));
+        let code_filename = driver.code_filename().ok_or_else(|| {
+            Error::new(format!(
+                "Failed to determine code filename from: {:?}",
+                &rustc_args[2..]
+            ))
+        })?;
+        if config.verbose {
+            println!("Processing {}", code_filename);
+        }
+        match driver.apply_rules_from_string_or_file(rules.clone(), &rules_file, config.clone()) {
+            Ok(output) => {
+                if config.verbose && output.updated_files.is_empty() {
+                    println!("No matches found in {} or submodules", code_filename);
+                }
+                for (filename, new_contents) in output.updated_files {
+                    action.process(&filename, &new_contents)?;
+                }
+            }
+            Err(errors) => {
+                return Err(Error::new(errors.to_string()));
+            }
+        }
     }
     Ok(())
 }
@@ -376,14 +378,8 @@ pub fn main() {
             pass_through_to_actual_compiler();
         }
     } else {
-        let mut args: Vec<String> = std::env::args().collect();
-        if args.get(1).map(|a| a == "rerast").unwrap_or(false) {
-            // We were run as "cargo-rerast rerast", but we want the help message to say "cargo
-            // rerast" which is what the user would have run.
-            args[0] = "cargo".to_owned();
-            if let Err(error) = cargo_rerast(&args) {
-                eprintln!("{}", error.message);
-            }
+        if let Err(error) = cargo_rerast() {
+            eprintln!("{}", error.message);
         }
     }
 }
