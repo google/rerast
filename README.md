@@ -1,5 +1,7 @@
 # Rerast
 
+[![Latest Version](https://img.shields.io/crates/v/rerast.svg)](https://crates.io/crates/rerast)
+
 Rerast is a tool for transforming Rust code using rules. A rule consists of a search pattern, a
 replacement and possibly some placeholders that can appear in both the search pattern and the
 replacement. Matching is done on syntax, not on text, so formatting doesn't matter. Placeholders are
