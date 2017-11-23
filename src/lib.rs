@@ -1171,9 +1171,7 @@ impl Matchable for hir::Ty_ {
             (&TyTraitObject(ref p, ref p_lifetime), &TyTraitObject(ref c, ref c_lifetime)) => {
                 p.attempt_match(state, c) && p_lifetime.attempt_match(state, c_lifetime)
             }
-            (&TyImplTraitExistential(ref p), &TyImplTraitExistential(ref c)) => {
-                p.attempt_match(state, c)
-            }
+            // TODO: TyImplTraitExistential
             // TODO: TyImplTraitUniversal
             // TODO: TyTypeOf
             _ => false,
