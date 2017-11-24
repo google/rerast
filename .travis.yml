@@ -1,0 +1,10 @@
+language: rust
+rust:
+ - nightly
+os:
+   - linux
+   - osx
+cache:
+  directories:
+    - $HOME/.cargo
+
