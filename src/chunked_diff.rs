@@ -114,7 +114,7 @@ mod tests {
         let chunks = chunked_diff("1\n2\n3\n", "3\n", 2);
         assert_eq!(chunks.len(), 1);
         colored::control::set_override(false);
-        assert_eq!(format!("{}", chunks[0]), "@@ -1,3 +1,1 @@\n-1\n-2\n 3\n");
+        assert_eq!(format!("{}", chunks[0]), "@@ -1,4 +1,2 @@\n-1\n-2\n 3\n \n");
     }
 
     #[test]
@@ -122,7 +122,7 @@ mod tests {
         let chunks = chunked_diff("1\n2\n3\n", "1\n2\n", 2);
         assert_eq!(chunks.len(), 1);
         colored::control::set_override(false);
-        assert_eq!(format!("{}", chunks[0]), "@@ -1,3 +1,2 @@\n 1\n 2\n-3\n");
+        assert_eq!(format!("{}", chunks[0]), "@@ -1,4 +1,3 @@\n 1\n 2\n-3\n \n");
     }
 
     #[test]
@@ -131,6 +131,6 @@ mod tests {
         assert_eq!(chunks.len(), 2);
         colored::control::set_override(false);
         assert_eq!(format!("{}", chunks[0]), "@@ -1,2 +1,1 @@\n-1\n 2\n");
-        assert_eq!(format!("{}", chunks[1]), "@@ -4,2 +3,1 @@\n 4\n-5\n");
+        assert_eq!(format!("{}", chunks[1]), "@@ -4,3 +3,2 @@\n 4\n-5\n \n");
     }
 }
