@@ -1,0 +1,99 @@
+use super::node_id_from_path;
+use ::errors::ErrorWithSpan;
+use rules::Rule;
+use std::collections::HashSet;
+use syntax::ext::quote::rt::Span;
+use syntax::ast::NodeId;
+use rustc::hir::{self, intravisit};
+use rustc::ty::TyCtxt;
+use ::rule_finder::StartMatch;
+
+struct ValidatorState<'a, 'gcx: 'a> {
+    tcx: TyCtxt<'a, 'gcx, 'gcx>,
+    errors: Vec<ErrorWithSpan>,
+    // Definitions that are defined as placeholders.
+    placeholders: HashSet<NodeId>,
+    // Placeholders that have been bound.
+    bound_placeholders: HashSet<NodeId>,
+}
+
+impl<'a, 'gcx: 'a> ValidatorState<'a, 'gcx> {
+    fn add_error<T: Into<String>>(&mut self, message: T, span: Span) {
+        self.errors.push(ErrorWithSpan::new(message, span));
+    }
+}
+
+impl<'gcx, T: StartMatch + 'gcx> Rule<'gcx, T> {
+    pub(crate) fn validate<'a>(
+        &self,
+        tcx: TyCtxt<'a, 'gcx, 'gcx>,
+    ) -> Result<(), Vec<ErrorWithSpan>> {
+        let rule_body = tcx.hir.body(self.body_id);
+
+        let mut search_validator = SearchValidator {
+            state: ValidatorState {
+                tcx: tcx,
+                errors: Vec::new(),
+                placeholders: rule_body.arguments.iter().map(|arg| arg.pat.id).collect(),
+                bound_placeholders: HashSet::new(),
+            },
+        };
+        StartMatch::walk(&mut search_validator, self.search);
+        let mut replacement_validator = ReplacementValidator {
+            state: search_validator.state,
+        };
+        StartMatch::walk(&mut replacement_validator, self.replace);
+        if !replacement_validator.state.errors.is_empty() {
+            return Err(replacement_validator.state.errors);
+        }
+        Ok(())
+    }
+}
+
+struct SearchValidator<'a, 'gcx: 'a> {
+    state: ValidatorState<'a, 'gcx>,
+}
+
+impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for SearchValidator<'a, 'gcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
+        intravisit::NestedVisitorMap::All(&self.state.tcx.hir)
+    }
+
+    fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: NodeId, span: Span) {
+        if let Some(node_id) = node_id_from_path(qpath) {
+            if self.state.placeholders.contains(&node_id)
+                && !self.state.bound_placeholders.insert(node_id)
+            {
+                self.state.add_error(
+                    "Placeholder is bound multiple times. This is not currently permitted.",
+                    span,
+                );
+            }
+        }
+        intravisit::walk_qpath(self, qpath, id, span);
+    }
+}
+
+struct ReplacementValidator<'a, 'gcx: 'a> {
+    state: ValidatorState<'a, 'gcx>,
+}
+
+impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReplacementValidator<'a, 'gcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
+        intravisit::NestedVisitorMap::All(&self.state.tcx.hir)
+    }
+
+    fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: NodeId, span: Span) {
+        if let Some(node_id) = node_id_from_path(qpath) {
+            if self.state.placeholders.contains(&node_id)
+                && !self.state.bound_placeholders.contains(&node_id)
+            {
+                self.state.add_error(
+                    "Placeholder used in replacement pattern, but never bound.",
+                    span,
+                );
+            }
+        }
+        intravisit::walk_qpath(self, qpath, id, span);
+    }
+}
