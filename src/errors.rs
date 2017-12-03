@@ -99,7 +99,7 @@ impl RerastErrors {
         ])
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item=&'a RerastError> {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a RerastError> {
         self.0.iter()
     }
 }

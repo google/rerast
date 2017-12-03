@@ -1,12 +1,12 @@
 use super::node_id_from_path;
-use ::errors::ErrorWithSpan;
+use errors::ErrorWithSpan;
 use rules::Rule;
 use std::collections::HashSet;
 use syntax::ext::quote::rt::Span;
 use syntax::ast::NodeId;
 use rustc::hir::{self, intravisit};
 use rustc::ty::TyCtxt;
-use ::rule_finder::StartMatch;
+use rule_finder::StartMatch;
 
 struct ValidatorState<'a, 'gcx: 'a> {
     tcx: TyCtxt<'a, 'gcx, 'gcx>,

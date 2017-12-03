@@ -348,14 +348,15 @@ fn find_and_apply_rules<'a, 'gcx>(
     let tcx = state.tcx.unwrap();
     let krate = tcx.hir.krate();
     let rerast_definitions = RerastDefinitionsFinder::find_definitions(tcx, krate);
-    let rules = rule_finder::RuleFinder::find_rules(tcx, rerast_definitions, krate).map_err(|errors| {
-        RerastErrors::new(
-            errors
-                .into_iter()
-                .map(|error| error.with_snippet(tcx))
-                .collect(),
-        )
-    })?;
+    let rules =
+        rule_finder::RuleFinder::find_rules(tcx, rerast_definitions, krate).map_err(|errors| {
+            RerastErrors::new(
+                errors
+                    .into_iter()
+                    .map(|error| error.with_snippet(tcx))
+                    .collect(),
+            )
+        })?;
     if config.verbose {
         println!("Found {} rule(s)", rules.len());
     }

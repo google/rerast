@@ -91,4 +91,3 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RerastDefinitionsFinder<'a, '
         }
     }
 }
-

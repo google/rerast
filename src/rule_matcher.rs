@@ -8,16 +8,16 @@ use syntax::ast::NodeId;
 use rustc::hir::{self, intravisit};
 use rustc::ty::{self, TyCtxt};
 use syntax::ext::quote::rt::Span;
-use rules::{Rules, Rule};
+use rules::{Rule, Rules};
 use rustc::infer::{self, InferCtxt};
 use syntax::symbol::Symbol;
-use ::std::mem;
+use std::mem;
 use std::fmt::Debug;
 use rustc::traits::{ObligationCause, Reveal};
 use definitions::RerastDefinitions;
-use ::syntax;
+use syntax;
 use rule_finder::StartMatch;
-use ::Config;
+use Config;
 use super::node_id_from_path;
 
 #[macro_export]
@@ -513,8 +513,8 @@ impl Matchable for hir::Expr {
                 p_type == c_type && p_name.attempt_match(state, c_name)
                     && p_block.attempt_match(state, c_block)
             }
-            (&ExprTup(ref p_vec), &ExprTup(ref c_vec)) |
-            (&ExprArray(ref p_vec), &ExprArray(ref c_vec)) => p_vec.attempt_match(state, c_vec),
+            (&ExprTup(ref p_vec), &ExprTup(ref c_vec))
+            | (&ExprArray(ref p_vec), &ExprArray(ref c_vec)) => p_vec.attempt_match(state, c_vec),
             (&ExprRepeat(ref p_expr, ref p_body_id), &ExprRepeat(ref c_expr, ref c_body_id)) => {
                 p_expr.attempt_match(state, c_expr) && p_body_id.attempt_match(state, c_body_id)
             }
@@ -975,8 +975,8 @@ impl Matchable for hir::Stmt {
     ) -> bool {
         use rustc::hir::Stmt_::*;
         match (&self.node, &code.node) {
-            (&StmtExpr(ref p, _), &StmtExpr(ref c, _)) |
-            (&StmtSemi(ref p, _), &StmtSemi(ref c, _)) => p.attempt_match(state, c),
+            (&StmtExpr(ref p, _), &StmtExpr(ref c, _))
+            | (&StmtSemi(ref p, _), &StmtSemi(ref c, _)) => p.attempt_match(state, c),
             (&StmtDecl(ref p, _), &StmtDecl(ref c, _)) => p.attempt_match(state, c),
             _ => false,
         }
@@ -1336,7 +1336,10 @@ impl OperatorPrecedence {
 
     // Returns whether parenthsis are needed around the child expression in order to maintain
     // structure. i.e the child expression has weaker precedence than the parent.
-    pub(crate) fn needs_parenthesis(maybe_parent_expr: Option<&hir::Expr>, child_expr: &hir::Expr) -> bool {
+    pub(crate) fn needs_parenthesis(
+        maybe_parent_expr: Option<&hir::Expr>,
+        child_expr: &hir::Expr,
+    ) -> bool {
         if let (Some(parent), Some(child)) = (
             maybe_parent_expr.and_then(OperatorPrecedence::from_expr),
             OperatorPrecedence::from_expr(child_expr),
@@ -1591,9 +1594,7 @@ impl CodeSubstitution {
                 output.push(';');
             }
         }
-        output.push_str(&codemap
-            .span_to_snippet(base_span.with_lo(span_lo))
-            .unwrap());
+        output.push_str(&codemap.span_to_snippet(base_span.with_lo(span_lo)).unwrap());
         output
     }
 }

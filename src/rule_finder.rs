@@ -7,8 +7,8 @@ use rustc::hir::{self, intravisit};
 use rustc::ty::{self, TyCtxt};
 use definitions::RerastDefinitions;
 use rule_matcher::{Matchable, OperatorPrecedence};
-use rules::{Rules, Rule};
-use ::errors::ErrorWithSpan;
+use rules::{Rule, Rules};
+use errors::ErrorWithSpan;
 use super::DeclaredNamesFinder;
 
 // Finds rules.
@@ -89,7 +89,7 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
             }
             None
         }
-        
+
         if arg_ty != T::replace_marker_type(&self.rerast_definitions) {
             // This is a rule of a different type
             return Ok(false);
