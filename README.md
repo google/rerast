@@ -116,8 +116,8 @@ cargo +nightly rerast --replay_git --diff
 
 This will locate the changed expression in your project (of which there should be only one) then try
 to determine a rule that would have produced this change. It will print the rule, then apply it to
-your project. If you are happy with the changes, you can run with --force to apply them, or you
-could copy the printed rule into a .rs file and apply it with --rule.
+your project. If you are happy with the changes, you can run again with --force to apply them, or
+you could copy the printed rule into a .rs file and apply it with --rules_file.
 
 * The rule produced will use placeholders to the maximum extent possible. i.e. wherever a
   subexpression is found in both the old and the new code, it will be replaced with a placeholder.

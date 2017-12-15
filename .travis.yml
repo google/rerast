@@ -7,4 +7,6 @@ os:
 cache:
   directories:
     - $HOME/.cargo
-
+notifications:
+  email:
+    - rerast-dev@googlegroups.com
