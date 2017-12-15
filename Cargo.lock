@@ -253,7 +253,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "rerast"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "clap 2.29.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clippy 0.0.176 (registry+https://github.com/rust-lang/crates.io-index)",
