@@ -28,6 +28,7 @@ use rerast::chunked_diff;
 use std::str::Utf8Error;
 use std::fs::{self, File};
 use std::io::prelude::*;
+use std::path::Path;
 use clap::ArgMatches;
 
 #[derive(Clone, Debug)]
@@ -169,7 +170,8 @@ impl Action {
         })
     }
 
-    fn process(&self, filename: &str, new_contents: &str) -> Result<(), Error> {
+    fn process(&self, path: &Path, new_contents: &str) -> Result<(), Error> {
+        let filename = path.to_str().ok_or_else(|| Error::new("Path wasn't valid UTF-8"))?;
         match *self {
             Action::Diff => {
                 let mut current_contents = String::new();

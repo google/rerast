@@ -148,14 +148,12 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
                 None
             }
         });
-        maybe_match_placeholders.map(|match_placeholders| {
-            Match {
-                rule: rule,
-                node: node,
-                match_placeholders: match_placeholders,
-                parent_node: parent_node,
-                original_span: original_span,
-            }
+        maybe_match_placeholders.map(|match_placeholders| Match {
+            rule: rule,
+            node: node,
+            match_placeholders: match_placeholders,
+            parent_node: parent_node,
+            original_span: original_span,
         })
     }
 
@@ -614,9 +612,7 @@ impl Matchable for hir::Expr {
             _ => {
                 debug!(
                     state,
-                    "Expression:   {:?}\ndidn't match: {:?}",
-                    code.node,
-                    self.node
+                    "Expression:   {:?}\ndidn't match: {:?}", code.node, self.node
                 );
                 false
             }
@@ -896,7 +892,6 @@ impl Matchable for usize {
         self == code
     }
 }
-
 
 impl Matchable for hir::Destination {
     fn attempt_match<'r, 'a, 'gcx, 'tcx>(
@@ -1563,7 +1558,6 @@ impl CodeSubstitution {
             });
         }
     }
-
 
     // Take the code represented by base_span and apply all the substitutions, returning the
     // resulting code.

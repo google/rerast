@@ -263,7 +263,7 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
         }
     }
 
-    fn apply_to_crate(&self, krate: &'gcx hir::Crate) -> HashMap<String, String> {
+    fn apply_to_crate(&self, krate: &'gcx hir::Crate) -> HashMap<PathBuf, String> {
         let codemap = self.tcx.sess.codemap();
 
         let matches = rule_matcher::RuleMatcher::find_matches(
@@ -279,16 +279,18 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
             .into_iter()
             .group_by(|subst| codemap.span_to_filename(subst.span));
         for (filename, file_substitutions) in &substitutions_grouped_by_file {
-            let filemap = codemap.get_filemap(&filename).unwrap();
-            let mut output = CodeSubstitution::apply(
-                file_substitutions,
-                codemap,
-                Span::new(filemap.start_pos, filemap.end_pos, SyntaxContext::empty()),
-            );
-            if output.ends_with(CODE_FOOTER) {
-                output = output.trim_right_matches(CODE_FOOTER).to_owned();
+            if let syntax_pos::FileName::Real(ref path) = filename {
+                let filemap = codemap.get_filemap(&filename).unwrap();
+                let mut output = CodeSubstitution::apply(
+                    file_substitutions,
+                    codemap,
+                    Span::new(filemap.start_pos, filemap.end_pos, SyntaxContext::empty()),
+                );
+                if output.ends_with(CODE_FOOTER) {
+                    output = output.trim_right_matches(CODE_FOOTER).to_owned();
+                }
+                updated_files.insert(path.clone(), output);
             }
-            updated_files.insert(filename, output);
         }
         updated_files
     }
@@ -296,7 +298,7 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct RerastOutput {
-    pub updated_files: HashMap<String, String>,
+    pub updated_files: HashMap<PathBuf, String>,
 }
 
 impl RerastOutput {
@@ -594,7 +596,7 @@ mod tests {
         let mut output =
             driver.apply_rules_to_code(file_loader, rule_header + rule, Config::default())?;
         if let hash_map::Entry::Occupied(mut entry) =
-            output.updated_files.entry(CODE_FILE_NAME.to_owned())
+            output.updated_files.entry(PathBuf::from(CODE_FILE_NAME))
         {
             let contents = entry.get_mut();
             assert!(contents.starts_with(&code_header));
@@ -614,7 +616,8 @@ mod tests {
 
     fn check(common: &str, rule: &str, input: &str, expected: &str) {
         let updated_files = apply_rule_to_test_code(common, &rule.to_string(), input).updated_files;
-        let is_other_filename = |filename| filename != CODE_FILE_NAME && filename != "common.rs";
+        let is_other_filename =
+            |filename| filename != Path::new(CODE_FILE_NAME) && filename != Path::new("common.rs");
         if updated_files.keys().any(is_other_filename) {
             panic!(
                 "Unexpected updates to other files: {:?}",
@@ -622,7 +625,7 @@ mod tests {
             );
         }
         let new_code = updated_files
-            .get(CODE_FILE_NAME)
+            .get(Path::new(CODE_FILE_NAME))
             .expect("File not updated. No match?");
         if new_code != expected {
             println!("result: {}", new_code);

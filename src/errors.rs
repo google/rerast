@@ -47,9 +47,7 @@ impl fmt::Display for RerastError {
                     writeln!(
                         f,
                         "    --> {}:{}:{}",
-                        file_lines.file.name,
-                        first_line.line_index,
-                        first_line.start_col.0
+                        file_lines.file.name, first_line.line_index, first_line.start_col.0
                     )?;
                 }
                 for line_info in &file_lines.lines {
