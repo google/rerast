@@ -83,6 +83,7 @@ extern crate syntax;
 extern crate syntax_pos;
 
 pub mod chunked_diff;
+pub mod change_to_rule;
 mod file_loader;
 mod validation;
 mod rules;
@@ -155,7 +156,7 @@ impl ArgBuilder {
     }
 }
 
-// Allow rules files to contain extern crate rerast_macros and an corresponding
+// Allow rules files to contain extern crate rerast_macros and a corresponding
 // #[macro_use]. Replace these lines if present with empty lines so that the
 // rule compiles once it's in the context of a submodule.
 fn remove_extern_crate_rerast_from_rules(rules: &str) -> String {
@@ -208,7 +209,7 @@ const RERAST_INTERNAL: &'static str = stringify!(
         _: _TraitRefRuleMarker) {}
 );
 
-fn node_id_from_path(q_path: &hir::QPath) -> Option<NodeId> {
+pub(crate) fn node_id_from_path(q_path: &hir::QPath) -> Option<NodeId> {
     use hir::def::Def::*;
     if let hir::QPath::Resolved(None, ref path) = *q_path {
         match path.def {
@@ -541,7 +542,8 @@ mod tests {
 
     const CODE_FILE_NAME: &'static str = "code.rs";
 
-    struct NullFileLoader;
+    #[derive(Clone)]
+    pub(crate) struct NullFileLoader;
 
     impl FileLoader for NullFileLoader {
         fn file_exists(&self, _: &Path) -> bool {

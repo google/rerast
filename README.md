@@ -105,6 +105,25 @@ a good idea since some identation and line lengths may not be ideal.
 The first matched rule wins. When some code is matched, no later rules will be applied to that
 code. However, code matched to placeholders will be searched for further matches to all rules.
 
+## Automatically determining a rule from a source code change
+
+If you're about to make a change multiple times throughout your source code and you're using git,
+you can commit (or stage) your changes, make one edit then run:
+
+```sh
+cargo +nightly rerast --replay_git --diff
+```
+
+This will locate the changed expression in your project (of which there should be only one) then try
+to determine a rule that would have produced this change. It will print the rule, then apply it to
+your project. If you are happy with the changes, you can run with --force to apply them, or you
+could copy the printed rule into a .rs file and apply it with --rule.
+
+* The rule produced will use placeholders to the maximum extent possible. i.e. wherever a
+  subexpression is found in both the old and the new code, it will be replaced with a placeholder.
+* This only works for changed expressions at the moment, not for statements, types, patterns etc.
+* Your code must be able to compile both with and without the change.
+
 ## Limitations
 
 * Use statements are not yet updated, so depending on your rule, may need to be updated after the
