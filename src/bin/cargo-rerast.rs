@@ -83,6 +83,12 @@ fn clean_local_targets() -> Result<(), Error> {
         .args(vec!["metadata", "--no-deps", "--format-version=1"])
         .stdout(std::process::Stdio::piped())
         .output()?;
+    if !output.status.success() {
+        return Err(Error::new(format!(
+            "cargo metadata failed:\n{}",
+            std::str::from_utf8(output.stderr.as_slice())?
+        )));
+    }
     let metadata_str = std::str::from_utf8(output.stdout.as_slice())?;
     let parsed = json::parse(metadata_str)?;
     for package in parsed["packages"].members() {
@@ -121,9 +127,8 @@ fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error>
     let mut result: Vec<Vec<String>> = Vec::new();
     for line in output_str.lines() {
         if line.starts_with(JSON_ARGS_MARKER) {
-            let parsed = json::parse(&line[JSON_ARGS_MARKER.len()..]).map_err(|e| {
-                io::Error::new(io::ErrorKind::InvalidData, e.to_string())
-            })?;
+            let parsed = json::parse(&line[JSON_ARGS_MARKER.len()..])
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             if let JsonValue::Array(values) = parsed {
                 let args: Result<Vec<String>, Error> = values
                     .into_iter()
@@ -173,7 +178,8 @@ impl Action {
     }
 
     fn process(&self, path: &Path, new_contents: &str) -> Result<(), Error> {
-        let filename = path.to_str().ok_or_else(|| Error::new("Path wasn't valid UTF-8"))?;
+        let filename = path.to_str()
+            .ok_or_else(|| Error::new("Path wasn't valid UTF-8"))?;
         match *self {
             Action::Diff => {
                 let mut current_contents = String::new();
@@ -263,6 +269,7 @@ fn cargo_rerast() -> Result<(), Error> {
                      --debug_snippet=[CODE_SNIPPET] 'A snippet of code that you think should \
                                                      match or list_all to list all checked \
                                                      snippets.'
+                     --crate_root=[DIR] 'Root directory of crate. Defaults to current directory.'
                                       \
                      --diff 'Diff changes'
                      --force 'Overwrite files',
@@ -285,6 +292,9 @@ fn cargo_rerast() -> Result<(), Error> {
         Some("never") => colored::control::set_override(false),
         Some(_) => return Err(Error::new("Invalid value for --color")),
         _ => {}
+    }
+    if let Some(crate_root) = matches.value_of("crate_root") {
+        std::env::set_current_dir(crate_root)?;
     }
     let mut maybe_rustc_command_lines = None;
     let rules = if let Some(replacement) = matches.value_of("replace_with") {
@@ -345,8 +355,7 @@ fn cargo_rerast() -> Result<(), Error> {
     };
 
     for rustc_args in &rustc_command_lines {
-        let driver =
-            RerastCompilerDriver::new(ArgBuilder::from_args(rustc_args.iter().cloned()));
+        let driver = RerastCompilerDriver::new(ArgBuilder::from_args(rustc_args.iter().cloned()));
         let code_filename = driver.code_filename().ok_or_else(|| {
             Error::new(format!(
                 "Failed to determine code filename from: {:?}",
@@ -381,13 +390,19 @@ fn derive_rule_from_git_change(command_lines: &[Vec<String>]) -> Result<String, 
         .arg(".")
         .stdout(std::process::Stdio::piped())
         .output()?;
-    
-    let changed_files: Vec<&str> = std::str::from_utf8(&git_diff_output.stdout)?.lines().collect();
+
+    let changed_files: Vec<&str> = std::str::from_utf8(&git_diff_output.stdout)?
+        .lines()
+        .collect();
     if changed_files.is_empty() {
-        return Err(Error::new("According to git diff, no files have been changed"));
+        return Err(Error::new(
+            "According to git diff, no files have been changed",
+        ));
     }
     if changed_files.len() > 1 {
-        return Err(Error::new("According to git diff, multiple have been changed"));
+        return Err(Error::new(
+            "According to git diff, multiple have been changed",
+        ));
     }
     let changed_filename = changed_files[0];
 
@@ -400,7 +415,9 @@ fn derive_rule_from_git_change(command_lines: &[Vec<String>]) -> Result<String, 
 
     match rerast::change_to_rule::determine_rule(
         command_lines,
-        changed_filename.to_owned(), original_file_contents.to_owned()) {
+        changed_filename.to_owned(),
+        original_file_contents.to_owned(),
+    ) {
         Ok(rule) => Ok(rule),
         Err(errors) => Err(Error::new(errors.to_string())),
     }
@@ -430,6 +447,7 @@ pub fn main() {
     } else {
         if let Err(error) = cargo_rerast() {
             eprintln!("{}", error.message);
+            std::process::exit(-1);
         }
     }
 }
