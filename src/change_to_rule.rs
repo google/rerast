@@ -59,13 +59,15 @@ fn default_hash<T: Hash>(value: &T) -> u64 {
     hasher.finish()
 }
 
-fn hash_token_stream(stream: TokenStream, hasher: &mut DefaultHasher) {
+fn hash_token_stream(stream: &TokenStream, hasher: &mut DefaultHasher) {
     for tt in stream.trees() {
         match tt {
             TokenTree::Token(_span, token) => {
                 token.hash(hasher);
             }
-            TokenTree::Delimited(_span, delimited) => hash_token_stream(delimited.stream(), hasher),
+            TokenTree::Delimited(_span, delimited) => {
+                hash_token_stream(&delimited.stream(), hasher)
+            }
         }
     }
 }
@@ -137,7 +139,7 @@ where
                 None,
             );
             let mut hasher = DefaultHasher::new();
-            hash_token_stream(stream, &mut hasher);
+            hash_token_stream(&stream, &mut hasher);
             hasher.finish()
         } else {
             // Non-leaf node. Just combine the already computed hashes of our children.
@@ -446,7 +448,7 @@ fn substitute_placeholders(
         result += &codemap
             .span_to_snippet(Span::new(start, subst_span.lo(), syntax_pos::NO_EXPANSION))
             .unwrap();
-        result += &substitution;
+        result += substitution;
         start = subst_span.hi();
     }
     result += &codemap
@@ -492,15 +494,14 @@ impl<'a, 'gcx: 'a, 'placeholders> PlaceholderMatcher<'a, 'gcx, 'placeholders> {
                         &session,
                         None,
                     );
-                    if stream.eq_unspanned(&other_stream) {
-                        if !self.used_placeholder_spans
+                    if stream.eq_unspanned(&other_stream)
+                        && !self.used_placeholder_spans
                             .iter()
                             .any(|s| s.contains(other_span) || other_span.contains(*s))
-                        {
-                            self.used_placeholder_spans.push(other_span);
-                            placeholder.uses.push(other_span);
-                            break;
-                        }
+                    {
+                        self.used_placeholder_spans.push(other_span);
+                        placeholder.uses.push(other_span);
+                        break;
                     }
                 }
                 if !placeholder.uses.is_empty() {
@@ -521,7 +522,7 @@ fn populate_placeholder_map<'a, T>(
     candidates: &'a [PlaceholderCandidate<T>],
     map_out: &mut HashMap<u64, Vec<&'a PlaceholderCandidate<T>>>,
 ) {
-    for ref candidate in candidates {
+    for candidate in candidates {
         map_out
             .entry(candidate.hash)
             .or_insert_with(Vec::new)
@@ -631,11 +632,11 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
 
 pub fn determine_rule(
     command_lines: &[Vec<String>],
-    modified_file_name: String,
-    original_file_contents: String,
+    modified_file_name: &str,
+    original_file_contents: &str,
 ) -> Result<String, RerastErrors> {
     determine_rule_with_file_loader(
-        ClonableRealFileLoader,
+        &ClonableRealFileLoader,
         command_lines,
         modified_file_name,
         original_file_contents,
@@ -643,13 +644,13 @@ pub fn determine_rule(
 }
 
 fn determine_rule_with_file_loader<T: FileLoader + Clone + 'static>(
-    file_loader: T,
+    file_loader: &T,
     command_lines: &[Vec<String>],
-    modified_file_name: String,
-    original_file_contents: String,
+    modified_file_name: &str,
+    original_file_contents: &str,
 ) -> Result<String, RerastErrors> {
-    let right = file_loader.read_file(Path::new(&modified_file_name))?;
-    let changed_span = match common(&original_file_contents, &right) {
+    let right = file_loader.read_file(Path::new(modified_file_name))?;
+    let changed_span = match common(original_file_contents, &right) {
         Some(c) => c,
         None => {
             return Err(RerastErrors::with_message(
@@ -659,7 +660,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + 'static>(
     };
     let mut compiler_calls = RCompilerCalls {
         find_rules_state: Rc::new(RefCell::new(FindRulesState {
-            modified_file_name: modified_file_name.clone(),
+            modified_file_name: modified_file_name.to_owned(),
             modified_source: right.clone(),
             changed_span: changed_span,
             changed_side_state: None,
@@ -703,7 +704,10 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + 'static>(
         // Run rustc on original source to confirm matching HIR node exists and to match
         // placeholders.
         let mut original_file_loader = box InMemoryFileLoader::new(file_loader.clone());
-        original_file_loader.add_file(modified_file_name.clone(), original_file_contents.clone());
+        original_file_loader.add_file(
+            modified_file_name.to_owned(),
+            original_file_contents.to_owned(),
+        );
         rustc_driver::run_compiler(&args, &mut compiler_calls, Some(original_file_loader), None);
 
         if right_side_changed_span == compiler_calls.find_rules_state.borrow().changed_span {
@@ -750,7 +754,7 @@ mod tests {
     use tests::NullFileLoader;
 
     fn check_determine_rule_with_file_loader(
-        file_loader: InMemoryFileLoader<NullFileLoader>,
+        file_loader: &InMemoryFileLoader<NullFileLoader>,
         changed_filename: &str,
         original_file_contents: &str,
         expected_rule: &str,
@@ -769,8 +773,8 @@ mod tests {
         let rule = determine_rule_with_file_loader(
             file_loader,
             &[args],
-            changed_filename.to_owned(),
-            original_file_contents.to_owned(),
+            changed_filename,
+            original_file_contents,
         ).unwrap();
         assert_eq!(rule, expected_rule);
     }
@@ -780,7 +784,7 @@ mod tests {
         let right = common.to_owned() + "\n" + right;
         let mut file_loader = InMemoryFileLoader::new(NullFileLoader);
         file_loader.add_file("lib.rs", right);
-        check_determine_rule_with_file_loader(file_loader, "lib.rs", &left, expected_rule);
+        check_determine_rule_with_file_loader(&file_loader, "lib.rs", &left, expected_rule);
     }
 
     #[test]
@@ -789,7 +793,7 @@ mod tests {
         file_loader.add_file("lib.rs", "mod foo;".to_owned());
         file_loader.add_file("foo.rs", "fn bar() -> bool {!true}".to_owned());
         check_determine_rule_with_file_loader(
-            file_loader,
+            &file_loader,
             "foo.rs",
             "fn bar() -> bool {false}",
             "fn r1() {replace!(false => !true);}",

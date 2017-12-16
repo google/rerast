@@ -68,10 +68,10 @@ mod var_names {
     // Environment variable name, which if set, indicates that we should write our arguments out as
     // JSON before running the actual rust compiler. Hopefully eventually cargo will have a way for
     // us to query the compile commandlines without doing this sort of thing.
-    pub const PRINT_ARGS_JSON: &'static str = "RERAST_PRINT_ARGS_JSON";
+    pub const PRINT_ARGS_JSON: &str = "RERAST_PRINT_ARGS_JSON";
 }
 
-const JSON_ARGS_MARKER: &'static str = "RUSTC_ARGS_AS_JSON: ";
+const JSON_ARGS_MARKER: &str = "RUSTC_ARGS_AS_JSON: ";
 
 // Queries cargo to find the name of the current crate, then runs cargo clean to
 // clean up artifacts for that package (but not dependencies). This is necessary
@@ -189,7 +189,7 @@ impl Action {
             Action::DiffCmd(ref diff_cmd) => {
                 // rustfmt has a native diff built-in. If that were extracted into a separate crate,
                 // we could reuse that instead of calling out to an external diff.
-                let mut diff_cmd_iter = diff_cmd.split(" ");
+                let mut diff_cmd_iter = diff_cmd.split(' ');
                 let command = diff_cmd_iter.next().unwrap_or("diff");
                 let mut diff_process = std::process::Command::new(command)
                     .args(
@@ -365,7 +365,7 @@ fn cargo_rerast() -> Result<(), Error> {
         if config.verbose {
             println!("Processing {}", code_filename);
         }
-        match driver.apply_rules_from_string_or_file(rules.clone(), &rules_file, config.clone()) {
+        match driver.apply_rules_from_string_or_file(rules.clone(), rules_file, config.clone()) {
             Ok(output) => {
                 if config.verbose && output.updated_files.is_empty() {
                     println!("No matches found in {} or submodules", code_filename);
@@ -415,8 +415,8 @@ fn derive_rule_from_git_change(command_lines: &[Vec<String>]) -> Result<String, 
 
     match rerast::change_to_rule::determine_rule(
         command_lines,
-        changed_filename.to_owned(),
-        original_file_contents.to_owned(),
+        changed_filename,
+        original_file_contents,
     ) {
         Ok(rule) => Ok(rule),
         Err(errors) => Err(Error::new(errors.to_string())),
@@ -433,21 +433,19 @@ fn pass_through_to_actual_compiler() {
 
 pub fn main() {
     let driver = RerastCompilerDriver::new(ArgBuilder::from_args(std::env::args().skip(1)));
-    if let Ok(_) = std::env::var(var_names::PRINT_ARGS_JSON) {
+    if std::env::var(var_names::PRINT_ARGS_JSON).is_ok() {
         // If cargo is calling us to get compiler configuration or is compiling
         // a dependent crate, thenp just run the compiler normally.
         if driver.args().has_arg("--print=cfg") || driver.is_compiling_dependency() {
             pass_through_to_actual_compiler();
         } else {
             let json_args: Vec<JsonValue> =
-                std::env::args().map(|a| JsonValue::String(a)).collect();
+                std::env::args().map(JsonValue::String).collect();
             println!("{}{}", JSON_ARGS_MARKER, JsonValue::Array(json_args).dump());
             pass_through_to_actual_compiler();
         }
-    } else {
-        if let Err(error) = cargo_rerast() {
-            eprintln!("{}", error.message);
-            std::process::exit(-1);
-        }
+    } else if let Err(error) = cargo_rerast() {
+        eprintln!("{}", error.message);
+        std::process::exit(-1);
     }
 }

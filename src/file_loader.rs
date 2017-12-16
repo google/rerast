@@ -39,7 +39,7 @@ impl<T: FileLoader> FileLoader for InMemoryFileLoader<T> {
     }
 }
 
-/// We only need this because RealFileLoader doesn't derive Clone
+/// We only need this because `RealFileLoader` doesn't derive `Clone`
 #[derive(Clone)]
 pub(crate) struct ClonableRealFileLoader;
 

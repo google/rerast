@@ -143,7 +143,7 @@ impl ArgBuilder {
         self
     }
 
-    fn iter<'a>(&'a self) -> std::slice::Iter<'a, String> {
+    fn iter(&self) -> std::slice::Iter<String> {
         self.args.iter()
     }
 
@@ -191,16 +191,16 @@ fn remove_extern_crate_rerast_from_rules(rules: &str) -> String {
 // content to the end of the file. It may be possible to inject our module(s) via a similar
 // mechanism to what's used by maybe_inject_crates_ref in libsyntax/std_inject.rs. For now, we go
 // with the easier/simpler mechanism.
-const RULES_MOD_NAME: &'static str = "__rerast_rules";
-const CODE_FOOTER: &'static str = stringify!(
+const RULES_MOD_NAME: &str = "__rerast_rules";
+const CODE_FOOTER: &str = stringify!(
     #[macro_use]
     pub mod __rerast_internal;
     pub mod __rerast_rules;
 );
 
 // This module is used to help us find the definitions for rerast types that we need.
-const RERAST_INTERNAL_MOD_NAME: &'static str = "__rerast_internal";
-const RERAST_INTERNAL: &'static str = stringify!(
+const RERAST_INTERNAL_MOD_NAME: &str = "__rerast_internal";
+const RERAST_INTERNAL: &str = stringify!(
     pub fn rerast_types(
         _: Statements,
         _: _ExprRuleMarker,
@@ -540,7 +540,7 @@ mod tests {
     use std::collections::hash_map;
     use std::io;
 
-    const CODE_FILE_NAME: &'static str = "code.rs";
+    const CODE_FILE_NAME: &str = "code.rs";
 
     #[derive(Clone)]
     pub(crate) struct NullFileLoader;
@@ -1967,7 +1967,7 @@ mod tests {
             #[macro_use]
             extern crate rerast_macros;
             // bar"#;
-        let rules = remove_extern_crate_rerast_from_rules(&rules);
+        let rules = remove_extern_crate_rerast_from_rules(rules);
         assert_eq!(
             rules,
             r#"
