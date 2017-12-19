@@ -45,7 +45,7 @@ Here's a more complex example
 ```rust
 use std::rc::Rc;
 fn rule1<T>(r: Rc<T>) {
-  replace!(r.clone() => Rc::clone(&r))}
+  replace!(r.clone() => Rc::clone(&r))
 }
 ```
 
