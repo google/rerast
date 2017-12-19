@@ -85,6 +85,7 @@ macro_rules! replace_trait_ref {
 /// pattern with another of the same type.
 ///
 /// # Examples
+///
 /// ```
 /// # #[macro_use] extern crate rerast;
 /// # struct Foo(i32);
@@ -96,6 +97,7 @@ macro_rules! replace_trait_ref {
 /// ```
 ///
 /// This will transform:
+///
 /// ```
 /// # #[derive(Copy, Clone)] struct Foo(i32);
 /// # fn f() -> Option<Foo> {Some(Foo(42))}
@@ -104,7 +106,9 @@ macro_rules! replace_trait_ref {
 ///     None => 0,
 /// }
 /// ```
+///
 /// Into:
+///
 /// ```
 /// # fn f() -> Foo {Foo(42)}
 /// match f() {
