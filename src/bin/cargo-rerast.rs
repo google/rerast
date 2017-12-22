@@ -15,15 +15,16 @@
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 
-#[macro_use] extern crate failure;
 #[macro_use]
 extern crate clap;
 extern crate colored;
+#[macro_use]
+extern crate failure;
 extern crate json;
 extern crate rerast;
 
 use json::JsonValue;
-use std::io::{self, Write};
+use std::io::Write;
 use rerast::{ArgBuilder, Config, RerastCompilerDriver};
 use rerast::chunked_diff;
 use std::fs::{self, File};
@@ -53,10 +54,11 @@ fn clean_local_targets() -> Result<(), Error> {
         .args(vec!["metadata", "--no-deps", "--format-version=1"])
         .stdout(std::process::Stdio::piped())
         .output()?;
-    ensure!(output.status.success(),
-            "cargo metadata failed:\n{}",
-            std::str::from_utf8(output.stderr.as_slice())?
-        );
+    ensure!(
+        output.status.success(),
+        "cargo metadata failed:\n{}",
+        std::str::from_utf8(output.stderr.as_slice())?
+    );
     let metadata_str = std::str::from_utf8(output.stdout.as_slice())?;
     let parsed = json::parse(metadata_str)?;
     for package in parsed["packages"].members() {
@@ -80,20 +82,20 @@ fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error>
         .output()
         .expect("Failed to invoke cargo");
     let output_str = std::str::from_utf8(cargo_check_output.stdout.as_slice())?;
-    ensure!(cargo_check_output.status.code() == Some(0),
-            "cargo check failed (exit code = {}). Output follows:\n{}",
-            cargo_check_output
-                .status
-                .code()
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| "signal".to_owned()),
-            output_str
-        );
+    ensure!(
+        cargo_check_output.status.code() == Some(0),
+        "cargo check failed (exit code = {}). Output follows:\n{}",
+        cargo_check_output
+            .status
+            .code()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "signal".to_owned()),
+        output_str
+    );
     let mut result: Vec<Vec<String>> = Vec::new();
     for line in output_str.lines() {
         if line.starts_with(JSON_ARGS_MARKER) {
-            let parsed = json::parse(&line[JSON_ARGS_MARKER.len()..])
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+            let parsed = json::parse(&line[JSON_ARGS_MARKER.len()..])?;
             if let JsonValue::Array(values) = parsed {
                 let args: Result<Vec<String>, Error> = values
                     .into_iter()
@@ -165,9 +167,7 @@ impl Action {
                     )
                     .stdin(std::process::Stdio::piped())
                     .spawn()
-                    .map_err(|e| {
-                        io::Error::new(e.kind(), format!("Error running '{}': {}", diff_cmd, e))
-                    })?;
+                    .map_err(|e| format_err!("Error running '{}': {}", diff_cmd, e))?;
                 diff_process
                     .stdin
                     .as_mut()
@@ -296,15 +296,15 @@ fn cargo_rerast() -> Result<(), Error> {
         || matches.is_present("search_pattern")
         || matches.is_present("search_trait_ref")
     {
-        bail!(
-            "Searching without --replace_with is not yet implemented"
-        );
+        bail!("Searching without --replace_with is not yet implemented");
     } else {
         "".to_owned()
     };
     let rules_file = matches.value_of("rules_file").unwrap_or("");
-    ensure!(rules_file.is_empty() != rules.is_empty(),
-        "Must specify either --rules_file or both of --search and --replacement");
+    ensure!(
+        rules_file.is_empty() != rules.is_empty(),
+        "Must specify either --rules_file or both of --search and --replacement"
+    );
     let action = Action::from_matches(matches)?;
     if config.verbose {
         println!("Running cargo check in order to build dependencies and get rustc commands");
@@ -356,10 +356,14 @@ fn derive_rule_from_git_change(command_lines: &[Vec<String>]) -> Result<String, 
     let changed_files: Vec<&str> = std::str::from_utf8(&git_diff_output.stdout)?
         .lines()
         .collect();
-    ensure!(!changed_files.is_empty(),
-            "According to git diff, no files have been changed");
-    ensure!(changed_files.len() == 1,
-        "According to git diff, multiple have been changed");
+    ensure!(
+        !changed_files.is_empty(),
+        "According to git diff, no files have been changed"
+    );
+    ensure!(
+        changed_files.len() == 1,
+        "According to git diff, multiple have been changed"
+    );
     let changed_filename = changed_files[0];
 
     let git_show_output = std::process::Command::new("git")
@@ -395,8 +399,7 @@ pub fn main() {
         if driver.args().has_arg("--print=cfg") || driver.is_compiling_dependency() {
             pass_through_to_actual_compiler();
         } else {
-            let json_args: Vec<JsonValue> =
-                std::env::args().map(JsonValue::String).collect();
+            let json_args: Vec<JsonValue> = std::env::args().map(JsonValue::String).collect();
             println!("{}{}", JSON_ARGS_MARKER, JsonValue::Array(json_args).dump());
             pass_through_to_actual_compiler();
         }
