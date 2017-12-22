@@ -15,52 +15,22 @@
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 
+#[macro_use] extern crate failure;
 #[macro_use]
 extern crate clap;
 extern crate colored;
 extern crate json;
 extern crate rerast;
 
-use json::{JsonError, JsonValue};
+use json::JsonValue;
 use std::io::{self, Write};
 use rerast::{ArgBuilder, Config, RerastCompilerDriver};
 use rerast::chunked_diff;
-use std::str::Utf8Error;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::path::Path;
 use clap::ArgMatches;
-
-#[derive(Clone, Debug)]
-struct Error {
-    message: String,
-}
-
-impl Error {
-    fn new<T: Into<String>>(message: T) -> Error {
-        Error {
-            message: message.into(),
-        }
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(error: io::Error) -> Error {
-        Error::new(error.to_string())
-    }
-}
-
-impl From<JsonError> for Error {
-    fn from(error: JsonError) -> Error {
-        Error::new(error.to_string())
-    }
-}
-
-impl From<Utf8Error> for Error {
-    fn from(error: Utf8Error) -> Error {
-        Error::new(error.to_string())
-    }
-}
+use failure::Error;
 
 // Environment variables that we use to pass data from the outer invocation of cargo-rerast through
 // to the inner invocation which runs within cargo check.
@@ -83,12 +53,10 @@ fn clean_local_targets() -> Result<(), Error> {
         .args(vec!["metadata", "--no-deps", "--format-version=1"])
         .stdout(std::process::Stdio::piped())
         .output()?;
-    if !output.status.success() {
-        return Err(Error::new(format!(
+    ensure!(output.status.success(),
             "cargo metadata failed:\n{}",
             std::str::from_utf8(output.stderr.as_slice())?
-        )));
-    }
+        );
     let metadata_str = std::str::from_utf8(output.stdout.as_slice())?;
     let parsed = json::parse(metadata_str)?;
     for package in parsed["packages"].members() {
@@ -111,10 +79,8 @@ fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error>
         .stdout(std::process::Stdio::piped())
         .output()
         .expect("Failed to invoke cargo");
-    let output_str = std::str::from_utf8(cargo_check_output.stdout.as_slice())
-        .map_err(|e| Error::new(e.to_string()))?;
-    if cargo_check_output.status.code() != Some(0) {
-        return Err(Error::new(format!(
+    let output_str = std::str::from_utf8(cargo_check_output.stdout.as_slice())?;
+    ensure!(cargo_check_output.status.code() == Some(0),
             "cargo check failed (exit code = {}). Output follows:\n{}",
             cargo_check_output
                 .status
@@ -122,8 +88,7 @@ fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error>
                 .map(|c| c.to_string())
                 .unwrap_or_else(|| "signal".to_owned()),
             output_str
-        )));
-    }
+        );
     let mut result: Vec<Vec<String>> = Vec::new();
     for line in output_str.lines() {
         if line.starts_with(JSON_ARGS_MARKER) {
@@ -136,7 +101,7 @@ fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error>
                         if let Some(s) = v.as_str() {
                             Ok(s.to_owned())
                         } else {
-                            Err(Error::new(format!("Expected JSON string, got: {:?}", v)))
+                            bail!("Expected JSON string, got: {:?}", v);
                         }
                     })
                     // First value will be the path to cargo-rerast, skip it.
@@ -173,13 +138,13 @@ impl Action {
             actions.clear();
         }
         actions.into_iter().next().ok_or_else(|| {
-            Error::new("Exactly one of --diff, --diff_cmd or --force is currently required")
+            format_err!("Exactly one of --diff, --diff_cmd or --force is currently required")
         })
     }
 
     fn process(&self, path: &Path, new_contents: &str) -> Result<(), Error> {
         let filename = path.to_str()
-            .ok_or_else(|| Error::new("Path wasn't valid UTF-8"))?;
+            .ok_or_else(|| format_err!("Path wasn't valid UTF-8"))?;
         match *self {
             Action::Diff => {
                 let mut current_contents = String::new();
@@ -242,7 +207,7 @@ fn get_replacement_kind_and_arg(matches: &ArgMatches) -> Result<(&'static str, S
         result.clear();
     }
     result.into_iter().next().ok_or_else(|| {
-        Error::new("--replace_with requires exactly one kind of --search* argument is required.")
+        format_err!("--replace_with requires exactly one kind of --search* argument is required.")
     })
 }
 
@@ -280,7 +245,7 @@ fn cargo_rerast() -> Result<(), Error> {
         )
         .get_matches_from(&args);
     let matches = matches.subcommand_matches("rerast").ok_or_else(|| {
-        Error::new("This binary is intended to be run as `cargo rerast` not run directly.")
+        format_err!("This binary is intended to be run as `cargo rerast` not run directly.")
     })?;
     let config = Config {
         verbose: matches.is_present("verbose"),
@@ -290,7 +255,7 @@ fn cargo_rerast() -> Result<(), Error> {
     match matches.value_of("color") {
         Some("always") => colored::control::set_override(true),
         Some("never") => colored::control::set_override(false),
-        Some(_) => return Err(Error::new("Invalid value for --color")),
+        Some(v) => bail!("Invalid value for --color: {}", v),
         _ => {}
     }
     if let Some(crate_root) = matches.value_of("crate_root") {
@@ -331,18 +296,15 @@ fn cargo_rerast() -> Result<(), Error> {
         || matches.is_present("search_pattern")
         || matches.is_present("search_trait_ref")
     {
-        return Err(Error::new(
-            "Searching without --replace_with is not yet implemented",
-        ));
+        bail!(
+            "Searching without --replace_with is not yet implemented"
+        );
     } else {
         "".to_owned()
     };
     let rules_file = matches.value_of("rules_file").unwrap_or("");
-    if rules_file.is_empty() == rules.is_empty() {
-        return Err(Error::new(
-            "Must specify either --rules_file or both of --search and --replacement",
-        ));
-    }
+    ensure!(rules_file.is_empty() != rules.is_empty(),
+        "Must specify either --rules_file or both of --search and --replacement");
     let action = Action::from_matches(matches)?;
     if config.verbose {
         println!("Running cargo check in order to build dependencies and get rustc commands");
@@ -357,10 +319,10 @@ fn cargo_rerast() -> Result<(), Error> {
     for rustc_args in &rustc_command_lines {
         let driver = RerastCompilerDriver::new(ArgBuilder::from_args(rustc_args.iter().cloned()));
         let code_filename = driver.code_filename().ok_or_else(|| {
-            Error::new(format!(
+            format_err!(
                 "Failed to determine code filename from: {:?}",
                 &rustc_args[2..]
-            ))
+            )
         })?;
         if config.verbose {
             println!("Processing {}", code_filename);
@@ -375,7 +337,7 @@ fn cargo_rerast() -> Result<(), Error> {
                 }
             }
             Err(errors) => {
-                return Err(Error::new(errors.to_string()));
+                bail!("{}", errors);
             }
         }
     }
@@ -394,16 +356,10 @@ fn derive_rule_from_git_change(command_lines: &[Vec<String>]) -> Result<String, 
     let changed_files: Vec<&str> = std::str::from_utf8(&git_diff_output.stdout)?
         .lines()
         .collect();
-    if changed_files.is_empty() {
-        return Err(Error::new(
-            "According to git diff, no files have been changed",
-        ));
-    }
-    if changed_files.len() > 1 {
-        return Err(Error::new(
-            "According to git diff, multiple have been changed",
-        ));
-    }
+    ensure!(!changed_files.is_empty(),
+            "According to git diff, no files have been changed");
+    ensure!(changed_files.len() == 1,
+        "According to git diff, multiple have been changed");
     let changed_filename = changed_files[0];
 
     let git_show_output = std::process::Command::new("git")
@@ -419,7 +375,7 @@ fn derive_rule_from_git_change(command_lines: &[Vec<String>]) -> Result<String, 
         original_file_contents,
     ) {
         Ok(rule) => Ok(rule),
-        Err(errors) => Err(Error::new(errors.to_string())),
+        Err(errors) => bail!("{}", errors),
     }
 }
 
@@ -445,7 +401,7 @@ pub fn main() {
             pass_through_to_actual_compiler();
         }
     } else if let Err(error) = cargo_rerast() {
-        eprintln!("{}", error.message);
+        eprintln!("{}", error);
         std::process::exit(-1);
     }
 }
