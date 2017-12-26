@@ -91,6 +91,7 @@ mod rule_finder;
 mod rule_matcher;
 mod definitions;
 mod errors;
+mod code_substitution;
 
 use syntax::ast::NodeId;
 use syntax::symbol::Symbol;
@@ -110,7 +111,7 @@ use syntax::codemap::{FileLoader, RealFileLoader};
 use std::path::{Path, PathBuf};
 use file_loader::InMemoryFileLoader;
 use definitions::{RerastDefinitions, RerastDefinitionsFinder};
-use rule_matcher::CodeSubstitution;
+use code_substitution::CodeSubstitution;
 use errors::RerastErrors;
 use rule_finder::StartMatch;
 use rules::Rules;
@@ -274,7 +275,7 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
             &self.rules,
             self.config.clone(),
         );
-        let substitutions = CodeSubstitution::sorted_substitions_for_matches(self.tcx, &matches);
+        let substitutions = rule_matcher::sorted_substitions_for_matches(self.tcx, &matches);
         let mut updated_files = HashMap::new();
         let substitutions_grouped_by_file = substitutions
             .into_iter()

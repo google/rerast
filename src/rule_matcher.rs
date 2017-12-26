@@ -15,7 +15,7 @@
 use std::collections::{HashMap, HashSet};
 use syntax_pos::SpanSnippetError;
 use rustc::ty::subst::Subst;
-use syntax::codemap::{self, CodeMap, Spanned};
+use syntax::codemap::{self, Spanned};
 use syntax::ast;
 use syntax::ptr::P;
 use syntax::ast::NodeId;
@@ -32,6 +32,7 @@ use definitions::RerastDefinitions;
 use syntax;
 use rule_finder::StartMatch;
 use Config;
+use code_substitution::CodeSubstitution;
 use super::node_id_from_path;
 
 #[macro_export]
@@ -1461,8 +1462,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
         let span = placeholder
             .contents
             .get_span(self.current_match.original_span);
-        let substitutions =
-            CodeSubstitution::sorted_substitions_for_matches(self.tcx, &placeholder.matches);
+        let substitutions = sorted_substitions_for_matches(self.tcx, &placeholder.matches);
         let new_code = CodeSubstitution::apply(substitutions.into_iter(), codemap, span);
 
         self.result.push(CodeSubstitution {
@@ -1534,31 +1534,11 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) struct CodeSubstitution {
-    // The span to be replaced.
-    pub(crate) span: Span,
-    // New code to replace what's at span.
-    pub(crate) new_code: String,
-    // Whether parenthesis are needed around the substitution.
-    pub(crate) needs_parenthesis: bool,
-}
-
-impl CodeSubstitution {
-    pub(crate) fn sorted_substitions_for_matches<'r, 'a, 'gcx>(
-        tcx: TyCtxt<'a, 'gcx, 'gcx>,
-        matches: &Matches<'r, 'gcx>,
-    ) -> Vec<CodeSubstitution> {
-        let mut substitutions = vec![];
-        Self::add_substitions(tcx, &matches.expr_matches, &mut substitutions);
-        Self::add_substitions(tcx, &matches.pattern_matches, &mut substitutions);
-        Self::add_substitions(tcx, &matches.type_matches, &mut substitutions);
-        Self::add_substitions(tcx, &matches.trait_ref_matches, &mut substitutions);
-        substitutions.sort();
-        substitutions
-    }
-
-    fn add_substitions<'r, 'a, 'gcx, T: StartMatch>(
+pub(crate) fn sorted_substitions_for_matches<'r, 'a, 'gcx>(
+    tcx: TyCtxt<'a, 'gcx, 'gcx>,
+    matches: &Matches<'r, 'gcx>,
+) -> Vec<CodeSubstitution> {
+    fn add_substitions_for_matches<'r, 'a, 'gcx, T: StartMatch>(
         tcx: TyCtxt<'a, 'gcx, 'gcx>,
         matches: &[Match<'r, 'gcx, T>],
         substitutions: &mut Vec<CodeSubstitution>,
@@ -1573,36 +1553,11 @@ impl CodeSubstitution {
         }
     }
 
-    // Take the code represented by base_span and apply all the substitutions, returning the
-    // resulting code.
-    pub(crate) fn apply<T: Iterator<Item = CodeSubstitution>>(
-        substitutions: T,
-        codemap: &CodeMap,
-        base_span: Span,
-    ) -> String {
-        let mut output = String::new();
-        let mut span_lo = base_span.lo();
-        for substitution in substitutions {
-            output.push_str(&codemap
-                .span_to_snippet(Span::new(span_lo, substitution.span.lo(), base_span.ctxt()))
-                .unwrap());
-            if substitution.needs_parenthesis {
-                output.push('(');
-            }
-            output.push_str(&substitution.new_code);
-            if substitution.needs_parenthesis {
-                output.push(')');
-            }
-            span_lo = substitution.span.hi();
-            // Macro invocations consume a ; that follows them. Check if the code we're replacing
-            // ends with a ;. If it does and the new code doesn't then insert one. This may need to
-            // be smarter, but hopefully this will do.
-            let code_being_replaced = codemap.span_to_snippet(substitution.span).unwrap();
-            if code_being_replaced.ends_with(';') && !substitution.new_code.ends_with(';') {
-                output.push(';');
-            }
-        }
-        output.push_str(&codemap.span_to_snippet(base_span.with_lo(span_lo)).unwrap());
-        output
-    }
+    let mut substitutions = vec![];
+    add_substitions_for_matches(tcx, &matches.expr_matches, &mut substitutions);
+    add_substitions_for_matches(tcx, &matches.pattern_matches, &mut substitutions);
+    add_substitions_for_matches(tcx, &matches.type_matches, &mut substitutions);
+    add_substitions_for_matches(tcx, &matches.trait_ref_matches, &mut substitutions);
+    substitutions.sort();
+    substitutions
 }
