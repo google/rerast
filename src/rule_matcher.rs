@@ -914,7 +914,17 @@ impl Matchable for hir::Destination {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.ident.attempt_match(state, &code.ident)
+        self.label.attempt_match(state, &code.label)
+    }
+}
+
+impl Matchable for hir::Label {
+    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+        &self,
+        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
+        code: &'gcx Self,
+    ) -> bool {
+        self.name.attempt_match(state, &code.name)
     }
 }
 
