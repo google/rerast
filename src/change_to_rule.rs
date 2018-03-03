@@ -316,12 +316,11 @@ fn after_analysis<'a, 'gcx>(
                 // which bit of the HIR tree has changed and select candidate placeholders.
                 find_rules_state.changed_span = new_changed_span;
                 find_rules_state.changed_side_state = Some(ChangedSideState {
-                    candidate_placeholders:
-                        PlaceholderCandidateFinder::find_placeholder_candidates(
-                            tcx,
-                            expr,
-                            |child_expr| RelativeSpan::new(child_expr.span, &filemap),
-                        ),
+                    candidate_placeholders: PlaceholderCandidateFinder::find_placeholder_candidates(
+                        tcx,
+                        expr,
+                        |child_expr| RelativeSpan::new(child_expr.span, &filemap),
+                    ),
                     required_paths: ReferencedPathsFinder::paths_in_expr(tcx, expr),
                 })
             }

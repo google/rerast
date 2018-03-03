@@ -132,7 +132,11 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
 
         let maybe_match_placeholders = self.tcx.infer_ctxt().enter(|infcx| {
             let tcx = infcx.tcx;
-            let substs = infcx.fresh_substs_for_item(tcx.def_span(rule_fn_id), rule_fn_id);
+            let substs = infcx.fresh_substs_for_item(
+                ty::UniverseIndex::ROOT,
+                tcx.def_span(rule_fn_id),
+                rule_fn_id,
+            );
             let placeholder_types_by_id = rule_body
                 .arguments
                 .iter()
@@ -1484,7 +1488,8 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
 }
 
 impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
-    for ReplacementVisitor<'r, 'a, 'gcx, T> {
+    for ReplacementVisitor<'r, 'a, 'gcx, T>
+{
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir)
     }
