@@ -76,8 +76,12 @@ fn default_hash<T: Hash>(value: &T) -> u64 {
 fn hash_token_stream(stream: &TokenStream, hasher: &mut DefaultHasher) {
     for tt in stream.trees() {
         match tt {
-            TokenTree::Token(_span, token) => {
-                token.hash(hasher);
+            TokenTree::Token(_span, _token) => {
+                // If hash collisions become enough of a problem that we get bad performance, we'll
+                // probably need to look into the structure of the token and hash that. In the mean
+                // time, lets just hash an arbitrary constant value. At least expressions with
+                // different tree structures will likely get different hashes.
+                42.hash(hasher)
             }
             TokenTree::Delimited(_span, delimited) => {
                 hash_token_stream(&delimited.stream(), hasher)

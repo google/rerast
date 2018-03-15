@@ -27,7 +27,7 @@ use rustc::infer::{self, InferCtxt};
 use syntax::symbol::Symbol;
 use std::mem;
 use std::fmt::Debug;
-use rustc::traits::{ObligationCause, Reveal};
+use rustc::traits::ObligationCause;
 use definitions::RerastDefinitions;
 use syntax;
 use rule_finder::StartMatch;
@@ -330,7 +330,7 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
                 // p_ty is never adjusted similarly, we need to check the non-adjusted type as well.
                 let c_ty_adjusted = self.code_type_tables().expr_ty_adjusted(expr);
                 let cause = ObligationCause::dummy();
-                let param_env = ty::ParamEnv::empty(Reveal::All);
+                let param_env = ty::ParamEnv::empty();
                 if self.infcx.at(&cause, param_env).sub(p_ty, c_ty).is_err()
                     && self.infcx
                         .at(&cause, param_env)
@@ -359,7 +359,7 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
         T: infer::at::ToTrace<'tcx>,
     {
         self.infcx
-            .can_sub(ty::ParamEnv::empty(Reveal::All), a, b)
+            .can_sub(ty::ParamEnv::empty(), a, b)
             .is_ok()
     }
 
