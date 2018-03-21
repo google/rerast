@@ -660,7 +660,7 @@ pub fn determine_rule(
     )
 }
 
-fn determine_rule_with_file_loader<T: FileLoader + Clone + 'static>(
+fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static>(
     file_loader: &T,
     command_lines: &[Vec<String>],
     modified_file_name: &str,

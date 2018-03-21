@@ -415,7 +415,7 @@ fn rustup_sysroot() -> String {
 }
 
 fn run_compiler(
-    file_loader: Option<Box<FileLoader + 'static>>,
+    file_loader: Option<Box<FileLoader + Send + Sync + 'static>>,
     args: &[String],
     config: Config,
 ) -> Result<RerastOutput, RerastErrors> {
@@ -487,7 +487,7 @@ impl RerastCompilerDriver {
         self.apply_rules_to_code(file_loader, rules, config)
     }
 
-    fn apply_rules_to_code<T: FileLoader + 'static>(
+    fn apply_rules_to_code<T: FileLoader + Send + Sync + 'static>(
         &self,
         file_loader: T,
         rules: String,

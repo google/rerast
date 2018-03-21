@@ -18,12 +18,12 @@ use std::path::{Path, PathBuf};
 use std::io;
 
 #[derive(Clone)]
-pub(crate) struct InMemoryFileLoader<T: FileLoader> {
+pub(crate) struct InMemoryFileLoader<T: FileLoader + Send + Sync> {
     files: HashMap<PathBuf, String>,
     inner_file_loader: T,
 }
 
-impl<T: FileLoader> InMemoryFileLoader<T> {
+impl<T: FileLoader + Send + Sync> InMemoryFileLoader<T> {
     pub(crate) fn new(inner: T) -> InMemoryFileLoader<T> {
         InMemoryFileLoader {
             files: HashMap::new(),
@@ -36,7 +36,7 @@ impl<T: FileLoader> InMemoryFileLoader<T> {
     }
 }
 
-impl<T: FileLoader> FileLoader for InMemoryFileLoader<T> {
+impl<T: FileLoader + Send + Sync> FileLoader for InMemoryFileLoader<T> {
     fn file_exists(&self, path: &Path) -> bool {
         self.files.contains_key(path) || self.inner_file_loader.file_exists(path)
     }
