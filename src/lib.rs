@@ -201,14 +201,14 @@ const CODE_FOOTER: &str = stringify!(
 
 // This module is used to help us find the definitions for rerast types that we need.
 const RERAST_INTERNAL_MOD_NAME: &str = "__rerast_internal";
-const RERAST_INTERNAL: &str = stringify!(
-    pub fn rerast_types(
-        _: Statements,
-        _: _ExprRuleMarker,
-        _: _PatternRuleMarker,
-        _: _TypeRuleMarker,
-        _: _TraitRefRuleMarker) {}
-);
+const RERAST_INTERNAL: &str = stringify!(pub fn rerast_types(
+    _: Statements,
+    _: _ExprRuleMarker,
+    _: _PatternRuleMarker,
+    _: _TypeRuleMarker,
+    _: _TraitRefRuleMarker,
+) {
+});
 
 pub(crate) fn node_id_from_path(q_path: &hir::QPath) -> Option<NodeId> {
     use hir::def::Def::*;

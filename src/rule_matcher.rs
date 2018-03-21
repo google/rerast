@@ -358,9 +358,7 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     where
         T: infer::at::ToTrace<'tcx>,
     {
-        self.infcx
-            .can_sub(ty::ParamEnv::empty(), a, b)
-            .is_ok()
+        self.infcx.can_sub(ty::ParamEnv::empty(), a, b).is_ok()
     }
 
     // Returns whether the supplied fn_expr (e.g. <Foo>::bar) is a reference to the same method as
