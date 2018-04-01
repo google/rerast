@@ -68,7 +68,6 @@
 
 #![feature(rustc_private)]
 #![feature(box_syntax)]
-#![feature(conservative_impl_trait)]
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 
@@ -585,7 +584,6 @@ mod tests {
                #![feature(box_patterns)]
                #![feature(slice_patterns)]
                #![feature(exclusive_range_pattern)]
-               #![feature(conservative_impl_trait)]
                "#.to_owned() + header1 + "#[macro_use]\nmod common;\n"
             + header2;
         let rule_header = header1.to_owned() + "use common;\n" + header2;
