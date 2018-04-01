@@ -65,14 +65,14 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
         config: Config,
     ) -> Matches<'r, 'gcx> {
         let mut matcher = RuleMatcher {
-            tcx: tcx,
-            rules: rules,
+            tcx,
+            rules,
             matches: Matches::new(),
             rule_mod_symbol: Symbol::intern(super::RULES_MOD_NAME),
             parent_expr: None,
             body_id: None,
-            rerast_definitions: rerast_definitions,
-            config: config,
+            rerast_definitions,
+            config,
             debug_active: false,
         };
         intravisit::walk_crate(&mut matcher, krate);
@@ -148,12 +148,12 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
                 .collect();
 
             let mut match_state = MatchState {
-                tcx: tcx,
-                infcx: infcx,
+                tcx,
+                infcx,
                 body_id: self.body_id,
                 rule_type_tables: rule_tables,
                 match_placeholders: MatchPlaceholders::new(),
-                placeholder_types_by_id: placeholder_types_by_id,
+                placeholder_types_by_id,
                 rerast_definitions: self.rerast_definitions,
                 placeholder_ids: &rule.placeholder_ids,
                 bindings_can_match_patterns: T::bindings_can_match_patterns(),
@@ -167,11 +167,11 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
             }
         });
         maybe_match_placeholders.map(|match_placeholders| Match {
-            rule: rule,
-            node: node,
-            match_placeholders: match_placeholders,
-            parent_node: parent_node,
-            original_span: original_span,
+            rule,
+            node,
+            match_placeholders,
+            parent_node,
+            original_span,
         })
     }
 
@@ -1221,7 +1221,7 @@ impl<'r, 'a, 'gcx, 'tcx, T: StartMatch> Match<'r, 'gcx, T> {
     fn get_replacement_source(&self, tcx: TyCtxt<'a, 'gcx, 'gcx>) -> String {
         let replacement = self.rule.replace;
         let mut replacement_visitor = ReplacementVisitor {
-            tcx: tcx,
+            tcx,
             result: vec![],
             current_match: self,
             parent_expr: None,
@@ -1310,7 +1310,7 @@ struct Placeholder<'r, 'gcx: 'r> {
 impl<'r, 'gcx: 'r> Placeholder<'r, 'gcx> {
     fn new(contents: PlaceholderContents<'gcx>) -> Placeholder<'r, 'gcx> {
         Placeholder {
-            contents: contents,
+            contents,
             matches: Matches::new(),
         }
     }
@@ -1478,7 +1478,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
 
         self.result.push(CodeSubstitution {
             span: placeholder_span,
-            new_code: new_code,
+            new_code,
             needs_parenthesis: placeholder.contents.needs_parenthesis(self.parent_expr),
         });
     }

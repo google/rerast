@@ -29,7 +29,7 @@ impl ErrorWithSpan {
     pub(crate) fn new<T: Into<String>>(message: T, span: Span) -> ErrorWithSpan {
         ErrorWithSpan {
             message: message.into(),
-            span: span,
+            span,
         }
     }
 

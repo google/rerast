@@ -288,7 +288,7 @@ fn after_analysis<'a, 'gcx>(
     };
     let span = find_rules_state.changed_span.to_span(&filemap);
     let mut rule_finder = RuleFinder {
-        tcx: tcx,
+        tcx,
         changed_span: span,
         candidate: Node::NotFound,
         body_id: None,
@@ -557,7 +557,7 @@ struct ReferencedPathsFinder<'a, 'gcx: 'a> {
 impl<'a, 'gcx: 'a> ReferencedPathsFinder<'a, 'gcx> {
     fn paths_in_expr(tcx: TyCtxt<'a, 'gcx, 'gcx>, expr: &'gcx hir::Expr) -> HashSet<String> {
         let mut finder = ReferencedPathsFinder {
-            tcx: tcx,
+            tcx,
             result: HashSet::new(),
         };
         intravisit::walk_expr(&mut finder, expr);
@@ -679,7 +679,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
         find_rules_state: Rc::new(RefCell::new(FindRulesState {
             modified_file_name: modified_file_name.to_owned(),
             modified_source: right.clone(),
-            changed_span: changed_span,
+            changed_span,
             changed_side_state: None,
             result: String::new(),
         })),

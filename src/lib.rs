@@ -236,10 +236,10 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
         config: Config,
     ) -> Replacer<'a, 'gcx> {
         Replacer {
-            tcx: tcx,
-            rerast_definitions: rerast_definitions,
-            rules: rules,
-            config: config,
+            tcx,
+            rerast_definitions,
+            rules,
+            config,
         }
     }
 
@@ -379,7 +379,7 @@ struct DeclaredNamesFinder<'a, 'gcx: 'a> {
 impl<'a, 'gcx> DeclaredNamesFinder<'a, 'gcx> {
     fn find<T: StartMatch>(tcx: TyCtxt<'a, 'gcx, 'gcx>, node: &'gcx T) -> HashMap<Symbol, NodeId> {
         let mut finder = DeclaredNamesFinder {
-            tcx: tcx,
+            tcx,
             names: HashMap::new(),
         };
         T::walk(&mut finder, node);
@@ -420,7 +420,7 @@ fn run_compiler(
 ) -> Result<RerastOutput, RerastErrors> {
     let mut compiler_calls = RerastCompilerCalls {
         output: Rc::new(RefCell::new(Ok(RerastOutput::new()))),
-        config: config,
+        config,
     };
     let (_, _) = rustc_driver::run_compiler(args, &mut compiler_calls, file_loader, None);
     Rc::try_unwrap(compiler_calls.output)
@@ -438,7 +438,7 @@ pub struct RerastCompilerDriver {
 
 impl RerastCompilerDriver {
     pub fn new(args: ArgBuilder) -> RerastCompilerDriver {
-        RerastCompilerDriver { args: args }
+        RerastCompilerDriver { args }
     }
 
     pub fn args(&self) -> &ArgBuilder {

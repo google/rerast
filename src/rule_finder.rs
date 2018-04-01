@@ -43,8 +43,8 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
         krate: &'gcx hir::Crate,
     ) -> Result<Rules<'gcx>, Vec<ErrorWithSpan>> {
         let mut rule_finder = RuleFinder {
-            tcx: tcx,
-            rerast_definitions: rerast_definitions,
+            tcx,
+            rerast_definitions,
             rules_mod_symbol: Symbol::intern(super::RULES_MOD_NAME),
             rules: Rules::new(),
             body_id: None,
@@ -123,11 +123,11 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
                 .collect();
 
             let rule = Rule {
-                search: search,
-                replace: replace,
-                body_id: body_id,
+                search,
+                replace,
+                body_id,
                 declared_name_node_ids: DeclaredNamesFinder::find(self.tcx, search),
-                placeholder_ids: placeholder_ids,
+                placeholder_ids,
             };
             rule.validate(self.tcx)?;
             T::add_rule(rule, &mut self.rules);

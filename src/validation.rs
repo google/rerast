@@ -46,7 +46,7 @@ impl<'gcx, T: StartMatch + 'gcx> Rule<'gcx, T> {
 
         let mut search_validator = SearchValidator {
             state: ValidatorState {
-                tcx: tcx,
+                tcx,
                 errors: Vec::new(),
                 placeholders: rule_body.arguments.iter().map(|arg| arg.pat.id).collect(),
                 bound_placeholders: HashSet::new(),

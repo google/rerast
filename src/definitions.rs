@@ -41,7 +41,7 @@ impl<'a, 'gcx> RerastDefinitionsFinder<'a, 'gcx> {
         krate: &'gcx hir::Crate,
     ) -> RerastDefinitions<'gcx> {
         let mut finder = RerastDefinitionsFinder {
-            tcx: tcx,
+            tcx,
             rerast_mod_symbol: Symbol::intern(super::RERAST_INTERNAL_MOD_NAME),
             inside_rerast_mod: false,
             definitions: None,
