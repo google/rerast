@@ -133,7 +133,6 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
         let maybe_match_placeholders = self.tcx.infer_ctxt().enter(|infcx| {
             let tcx = infcx.tcx;
             let substs = infcx.fresh_substs_for_item(
-                ty::UniverseIndex::ROOT,
                 tcx.def_span(rule_fn_id),
                 rule_fn_id,
             );
