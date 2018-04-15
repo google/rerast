@@ -569,9 +569,6 @@ impl Matchable for hir::Expr {
             (&ExprField(ref p_expr, ref p_name), &ExprField(ref c_expr, ref c_name)) => {
                 p_expr.attempt_match(state, c_expr) && p_name.attempt_match(state, c_name)
             }
-            (&ExprTupField(ref p_expr, ref p_index), &ExprTupField(ref c_expr, ref c_index)) => {
-                p_expr.attempt_match(state, c_expr) && p_index.attempt_match(state, c_index)
-            }
             (&ExprAssign(ref p_lhs, ref p_rhs), &ExprAssign(ref c_lhs, ref c_rhs)) => {
                 p_lhs.attempt_match(state, c_lhs) && p_rhs.attempt_match(state, c_rhs)
             }
