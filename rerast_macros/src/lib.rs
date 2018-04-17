@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
+// global `#[deny()]` in the processed crate affects this file as well,
+// and could cause compilation-breaking warnings.
+#![allow(missing_docs, warnings)]
+
 /// Invocations of this macro instruct Rerast to replace the first expression/statement with the one
 /// after the =>. For example replace!(5 => 6) says to replace all occurences of the literal 5 with
 /// the literal 6.
