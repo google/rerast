@@ -32,7 +32,9 @@ fn test_simple_diff() {
         .is(r#"
 --- src/lib.rs
 +++ src/lib.rs
-@@ -1,5 +1,5 @@
+@@ -4,7 +4,7 @@
+ 
+ /// A well documented function.
  pub fn foo(a: i32, b: i32) -> i32 {
 -    if a > b {
 +    if b < a {
@@ -40,7 +42,7 @@ fn test_simple_diff() {
      } else {
          b
 
-@@ -9,7 +9,7 @@
+@@ -14,7 +14,7 @@
  #[cfg(test)]
  mod tests {
      fn bar(a: i32, b: i32) -> i32 {
