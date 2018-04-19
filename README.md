@@ -63,7 +63,7 @@ to do several replacements that make use of the same placeholders.
 
 Besides replace! there are several other replacement macros that can be used:
 
-* replace\_patttern! - this replaces patterns. e.g. &Some(a). Such a pattern might appear in a match
+* replace\_pattern! - this replaces patterns. e.g. &Some(a). Such a pattern might appear in a match
   arm or if let. Irrefutable patterns (those that are guaranteed to always match) can also be
   matched within let statements and function arguments.
 * replace\_type! - this replaces types. It's currently a bit limited in that it doesn't support
