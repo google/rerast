@@ -165,16 +165,13 @@ impl FileRelativeSubstitutions {
                 hash_map::Entry::Occupied(mut entry) => {
                     let merged = entry.get_mut();
                     merged.extend(substitutions);
+                    merged.sort();
                     // Remove equal or overlapping substitutions.
                     // TODO: Issue warning for any overlapping substitutions that aren't equal.
-                    let mut last_span_opt: Option<Span> = None;
+                    let mut max_hi = BytePos(0);
                     merged.retain(|subst| {
-                        let retain = if let Some(last_span) = last_span_opt {
-                            last_span.hi() <= subst.span.lo()
-                        } else {
-                            true
-                        };
-                        last_span_opt = Some(subst.span);
+                        let retain = max_hi <= subst.span.lo();
+                        max_hi = ::std::cmp::max(max_hi, subst.span.hi());
                         retain
                     });
                 }

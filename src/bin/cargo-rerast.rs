@@ -87,9 +87,7 @@ fn read_file_as_string(path: &Path) -> Result<String, Error> {
         File::open(path)?.read_to_string(&mut contents)?;
         Ok(contents)
     }
-    read_file_internal(path).map_err(|error| {
-        format_err!("Error opening {:?}: {}", path, error)
-    })
+    read_file_internal(path).map_err(|error| format_err!("Error opening {:?}: {}", path, error))
 }
 
 fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error> {

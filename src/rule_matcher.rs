@@ -1558,5 +1558,6 @@ pub(crate) fn substitions_for_matches<'r, 'a, 'gcx>(
     add_substitions_for_matches(tcx, &matches.pattern_matches, &mut substitutions);
     add_substitions_for_matches(tcx, &matches.type_matches, &mut substitutions);
     add_substitions_for_matches(tcx, &matches.trait_ref_matches, &mut substitutions);
+    substitutions.sort();
     substitutions
 }
