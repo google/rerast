@@ -122,19 +122,21 @@ pub struct Config {
     pub files: Option<Vec<String>>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct ArgBuilder {
-    args: Vec<String>,
+#[derive(Debug, Clone)]
+pub struct CompilerInvocationInfo {
+    pub args: Vec<String>,
+    pub env: HashMap<String, String>,
 }
 
-impl ArgBuilder {
-    pub fn new() -> ArgBuilder {
-        ArgBuilder { args: Vec::new() }
+impl CompilerInvocationInfo {
+    pub fn new() -> CompilerInvocationInfo {
+        CompilerInvocationInfo { args: Vec::new(), env: HashMap::new() }
     }
 
-    pub fn from_args<T: Iterator<Item = S>, S: Into<String>>(args: T) -> ArgBuilder {
-        ArgBuilder {
+    pub fn from_args<T: Iterator<Item = S>, S: Into<String>>(args: T) -> CompilerInvocationInfo {
+        CompilerInvocationInfo {
             args: args.map(|s| s.into()).collect(),
+            env: HashMap::new(),
         }
     }
 
@@ -143,16 +145,28 @@ impl ArgBuilder {
         self
     }
 
-    fn iter(&self) -> std::slice::Iter<String> {
+    fn args_iter(&self) -> std::slice::Iter<String> {
         self.args.iter()
     }
 
-    pub fn build(self) -> Vec<String> {
+    pub fn build_args(self) -> Vec<String> {
         self.args
     }
 
     pub fn has_arg(&self, s: &str) -> bool {
-        self.iter().any(|a| a == s)
+        self.args_iter().any(|a| a == s)
+    }
+
+    pub(crate) fn run_compiler<'a>(&self, compiler_calls: &mut CompilerCalls<'a>,
+                                   file_loader: Option<Box<FileLoader + Send + Sync + 'static>>) {
+        for (k, v) in &self.env {
+            std::env::set_var(k, v);
+        }
+        let (_, _) = rustc_driver::run_compiler(&self.args,
+                                                compiler_calls, file_loader, None);
+        for (k, _) in &self.env {
+            std::env::set_var(k, "");
+        }
     }
 }
 
@@ -425,14 +439,14 @@ fn rustup_sysroot() -> String {
 
 fn run_compiler(
     file_loader: Option<Box<FileLoader + Send + Sync + 'static>>,
-    args: &[String],
+    invocation_info: &CompilerInvocationInfo,
     config: Config,
 ) -> Result<RerastOutput, RerastErrors> {
     let mut compiler_calls = RerastCompilerCalls {
         output: Rc::new(RefCell::new(Ok(RerastOutput::new()))),
         config,
     };
-    let (_, _) = rustc_driver::run_compiler(args, &mut compiler_calls, file_loader, None);
+    invocation_info.run_compiler(&mut compiler_calls, file_loader);
     Rc::try_unwrap(compiler_calls.output)
         .map_err(|_| {
             RerastErrors::with_message(
@@ -443,16 +457,16 @@ fn run_compiler(
 }
 
 pub struct RerastCompilerDriver {
-    args: ArgBuilder,
+    invocation_info: CompilerInvocationInfo,
 }
 
 impl RerastCompilerDriver {
-    pub fn new(args: ArgBuilder) -> RerastCompilerDriver {
-        RerastCompilerDriver { args }
+    pub fn new(invocation_info: CompilerInvocationInfo) -> RerastCompilerDriver {
+        RerastCompilerDriver { invocation_info }
     }
 
-    pub fn args(&self) -> &ArgBuilder {
-        &self.args
+    pub fn args(&self) -> &CompilerInvocationInfo {
+        &self.invocation_info
     }
 
     pub fn is_compiling_dependency(&self) -> bool {
@@ -468,11 +482,21 @@ impl RerastCompilerDriver {
     }
 
     pub fn code_filename(&self) -> Option<&str> {
-        self.args
-            .iter()
+        self.invocation_info
+            .args_iter()
             .skip(1)
             .find(|arg| arg.ends_with(".rs"))
             .map(|s| s.as_ref())
+    }
+
+    // Returns the argument after the first argument that's equal to before.
+    pub fn get_arg_after(&self, before: &str) -> Option<&str> {
+        for two_args in self.invocation_info.args.windows(2) {
+            if two_args[0] == before {
+                return Some(&two_args[1])
+            }
+        }
+        None
     }
 
     // TODO: Consider just removing this method.
@@ -492,13 +516,12 @@ impl RerastCompilerDriver {
         rules: String,
         config: Config,
     ) -> Result<RerastOutput, RerastErrors> {
-        let args_vec = self.args
+        let invocation_info = self.invocation_info
             .clone()
             .arg("--sysroot")
             .arg(rustup_sysroot())
             .arg("--allow")
-            .arg("dead_code")
-            .build();
+            .arg("dead_code");
         let mut file_loader = box InMemoryFileLoader::new(file_loader);
         // In an ideal world we might get rust to parse the arguments then ask it what the root code
         // filename is. In the absence of being able to do that, this will have to do.
@@ -530,7 +553,7 @@ impl RerastCompilerDriver {
         let code_with_footer = file_loader.read_file(&code_path)? + CODE_FOOTER;
 
         file_loader.add_file(code_path, code_with_footer);
-        run_compiler(Some(file_loader), &args_vec, config)
+        run_compiler(Some(file_loader), &invocation_info, config)
     }
 }
 
@@ -588,7 +611,7 @@ mod tests {
             + header2;
         let rule_header = header1.to_owned() + "use common;\n" + header2;
         file_loader.add_file(CODE_FILE_NAME.to_owned(), code_header.clone() + code);
-        let args = ArgBuilder::new()
+        let args = CompilerInvocationInfo::new()
             .arg("rerast_test")
             .arg("--crate-type")
             .arg("lib")

@@ -37,4 +37,15 @@ mod tests {
     fn x() {
         assert_eq!(super::foo(1, 2), bar(1, 2));
     }
+
+    #[test]
+    fn env() {
+        // Make sure some environment variables are set. See issue #9.
+        //env!("OUT_DIR");
+        env!("CARGO_PKG_VERSION");
+        env!("CARGO_PKG_VERSION");
+        env!("CARGO_PKG_VERSION_MAJOR");
+        env!("CARGO_PKG_VERSION_MINOR");
+        env!("CARGO_PKG_VERSION_PATCH");
+    }
 }

@@ -39,6 +39,7 @@ use std::collections::hash_set::HashSet;
 use std::ops::Range;
 use file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
 use errors::RerastErrors;
+use CompilerInvocationInfo;
 
 struct PlaceholderCandidate<T> {
     hash: u64,
@@ -648,13 +649,13 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
 }
 
 pub fn determine_rule(
-    command_lines: &[Vec<String>],
+    compiler_invocations: &[CompilerInvocationInfo],
     modified_file_name: &str,
     original_file_contents: &str,
 ) -> Result<String, RerastErrors> {
     determine_rule_with_file_loader(
         &ClonableRealFileLoader,
-        command_lines,
+        compiler_invocations,
         modified_file_name,
         original_file_contents,
     )
@@ -662,7 +663,7 @@ pub fn determine_rule(
 
 fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static>(
     file_loader: &T,
-    command_lines: &[Vec<String>],
+    compiler_invocations: &[CompilerInvocationInfo],
     modified_file_name: &str,
     original_file_contents: &str,
 ) -> Result<String, RerastErrors> {
@@ -689,17 +690,14 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
     loop {
         // Run rustc on modified source to find HIR node that encloses changed code as well as
         // subnodes that will be candidates for placeholders.
-        let args = ::ArgBuilder::from_args(command_lines[args_index].iter().cloned())
+        let invocation_info = compiler_invocations[args_index].clone()
             .arg("--sysroot")
             .arg(::rustup_sysroot())
             .arg("--allow")
-            .arg("dead_code")
-            .build();
-        rustc_driver::run_compiler(
-            &args,
+            .arg("dead_code");
+        invocation_info.run_compiler(
             &mut compiler_calls,
             Some(box file_loader.clone()),
-            None,
         );
         if compiler_calls
             .find_rules_state
@@ -709,7 +707,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
         {
             // Span was not found with these compiler args, try the next command line.
             args_index += 1;
-            if args_index >= command_lines.len() {
+            if args_index >= compiler_invocations.len() {
                 return Err(RerastErrors::with_message(
                     "Failed to find a modified expression",
                 ));
@@ -725,7 +723,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
             modified_file_name.to_owned(),
             original_file_contents.to_owned(),
         );
-        rustc_driver::run_compiler(&args, &mut compiler_calls, Some(original_file_loader), None);
+        invocation_info.run_compiler(&mut compiler_calls, Some(original_file_loader));
 
         if right_side_changed_span == compiler_calls.find_rules_state.borrow().changed_span {
             // The changed span after examining the right side matched a full expression on the
@@ -781,15 +779,18 @@ mod tests {
             .map(str::trim)
             .collect::<Vec<_>>()
             .join("");
-        let args = vec![
-            "rustc".to_owned(),
-            "--crate-type".to_owned(),
-            "lib".to_owned(),
-            "lib.rs".to_owned(),
-        ];
+        let invocation_info = CompilerInvocationInfo {
+            args: vec![
+                "rustc".to_owned(),
+                "--crate-type".to_owned(),
+                "lib".to_owned(),
+                "lib.rs".to_owned(),
+            ],
+            env: HashMap::new(),
+        };
         let rule = determine_rule_with_file_loader(
             file_loader,
-            &[args],
+            &[invocation_info],
             changed_filename,
             original_file_contents,
         ).unwrap();
