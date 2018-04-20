@@ -81,6 +81,17 @@ fn clean_local_targets() -> Result<(), Error> {
     Ok(())
 }
 
+fn read_file_as_string(path: &Path) -> Result<String, Error> {
+    fn read_file_internal(path: &Path) -> std::io::Result<String> {
+        let mut contents = String::new();
+        File::open(path)?.read_to_string(&mut contents)?;
+        Ok(contents)
+    }
+    read_file_internal(path).map_err(|error| {
+        format_err!("Error opening {:?}: {}", path, error)
+    })
+}
+
 fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error> {
     clean_local_targets()?;
     let current_exe = std::env::current_exe().expect("env::current_exe() failed");
@@ -159,8 +170,7 @@ impl Action {
             .ok_or_else(|| format_err!("Path wasn't valid UTF-8"))?;
         match *self {
             Action::Diff => {
-                let mut current_contents = String::new();
-                File::open(filename)?.read_to_string(&mut current_contents)?;
+                let current_contents = read_file_as_string(path)?;
                 chunked_diff::print_diff(filename, &current_contents, new_contents);
             }
             Action::DiffCmd(ref diff_cmd) => {
@@ -308,9 +318,7 @@ fn cargo_rerast() -> Result<(), Error> {
     {
         bail!("Searching without --replace_with is not yet implemented");
     } else if let Some(rules_file) = matches.value_of("rules_file") {
-        let mut rules = String::new();
-        File::open(rules_file)?.read_to_string(&mut rules)?;
-        rules
+        read_file_as_string(Path::new(rules_file))?
     } else {
         bail!("Must specify either --rules_file or both of --search and --replacement");
     };
