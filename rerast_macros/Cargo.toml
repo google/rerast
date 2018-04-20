@@ -1,6 +1,6 @@
 [package]
 name = "rerast_macros"
-version = "0.1.0"
+version = "0.1.12"
 description = "Macros for use in Rerast rules"
 repository = "https://github.com/google/rerast"
 license = "Apache-2.0"
