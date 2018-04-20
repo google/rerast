@@ -103,6 +103,7 @@ fn get_compiler_invocation_infos_for_local_package() -> Result<Vec<CompilerInvoc
         .env("RUSTC_WRAPPER", current_exe)
         .args(vec!["check", "-j", "1", "-v", "--tests", "--benches", "--examples"])
         .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .output()
         .expect("Failed to invoke cargo");
     let output_str = std::str::from_utf8(cargo_check_output.stdout.as_slice())?;
@@ -114,7 +115,7 @@ fn get_compiler_invocation_infos_for_local_package() -> Result<Vec<CompilerInvoc
             .code()
             .map(|c| c.to_string())
             .unwrap_or_else(|| "signal".to_owned()),
-        output_str
+        std::str::from_utf8(cargo_check_output.stderr.as_slice())?
     );
     let mut result: Vec<CompilerInvocationInfo> = Vec::new();
     for line in output_str.lines() {
