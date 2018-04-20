@@ -63,7 +63,10 @@ fn clean_local_targets() -> Result<(), Error> {
         std::str::from_utf8(output.stderr.as_slice())?
     );
     let metadata_str = std::str::from_utf8(output.stdout.as_slice())?;
-    let parsed = json::parse(metadata_str)?;
+    let parsed = match json::parse(metadata_str) {
+        Ok(v) => v,
+        Err(e) => bail!("Error parsing metadata JSON: {:?}", e),
+    };
     for package in parsed["packages"].members() {
         if let Some(name) = package["name"].as_str() {
             // TODO: Remove once #10 is fixed.
@@ -93,10 +96,11 @@ fn read_file_as_string(path: &Path) -> Result<String, Error> {
 fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error> {
     clean_local_targets()?;
     let current_exe = std::env::current_exe().expect("env::current_exe() failed");
+    // The -j 1 flags are to prevent interleaving of stdout from corrupting our JSON. See issue #5.
     let cargo_check_output = std::process::Command::new("cargo")
         .env(var_names::PRINT_ARGS_JSON, "yes")
         .env("RUSTC_WRAPPER", current_exe)
-        .args(vec!["check", "-v", "--tests", "--benches", "--examples"])
+        .args(vec!["check", "-j", "1", "-v", "--tests", "--benches", "--examples"])
         .stdout(std::process::Stdio::piped())
         .output()
         .expect("Failed to invoke cargo");
@@ -114,7 +118,11 @@ fn get_rustc_commandlines_for_local_package() -> Result<Vec<Vec<String>>, Error>
     let mut result: Vec<Vec<String>> = Vec::new();
     for line in output_str.lines() {
         if line.starts_with(JSON_ARGS_MARKER) {
-            let parsed = json::parse(&line[JSON_ARGS_MARKER.len()..])?;
+            let json = &line[JSON_ARGS_MARKER.len()..];
+            let parsed = match json::parse(json) {
+                Ok(v) => v,
+                Err(e) => bail!("Error parsing internal response JSON: {:?}: {:?}", e, json),
+            };
             if let JsonValue::Array(values) = parsed {
                 let args: Result<Vec<String>, Error> = values
                     .into_iter()
