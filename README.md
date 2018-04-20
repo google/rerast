@@ -3,10 +3,11 @@
 [![Latest Version](https://img.shields.io/crates/v/rerast.svg)](https://crates.io/crates/rerast)
 [![Build Status](https://travis-ci.org/google/rerast.svg?branch=master)](https://travis-ci.org/google/rerast)
 
-Rerast is a tool for transforming Rust code using rules. A rule consists of a search pattern, a
-replacement and possibly some placeholders that can appear in both the search pattern and the
-replacement. Matching is done on syntax, not on text, so formatting doesn't matter. Placeholders are
-typed and must match the type found in the code for the rule to apply.
+Rerast is a search/replace tool for Rust code using rules. A rule consists of a
+search pattern, a replacement and possibly some placeholders that can appear in
+both the search pattern and the replacement. Matching is done on syntax, not on
+text, so formatting doesn't matter. Placeholders are typed and must match the
+type found in the code for the rule to apply.
 
 ## Installation
 
