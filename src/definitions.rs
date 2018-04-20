@@ -36,10 +36,13 @@ pub(crate) struct RerastDefinitionsFinder<'a, 'gcx: 'a> {
 }
 
 impl<'a, 'gcx> RerastDefinitionsFinder<'a, 'gcx> {
+    /// Finds rerast's internal definitions. Returns none if they cannot be found. This happens for
+    /// example if the root source file has a #![cfg(feature = "something")] where the "something"
+    /// feature is not enabled.
     pub(crate) fn find_definitions(
         tcx: TyCtxt<'a, 'gcx, 'gcx>,
         krate: &'gcx hir::Crate,
-    ) -> RerastDefinitions<'gcx> {
+    ) -> Option<RerastDefinitions<'gcx>> {
         let mut finder = RerastDefinitionsFinder {
             tcx,
             rerast_mod_symbol: Symbol::intern(super::RERAST_INTERNAL_MOD_NAME),
@@ -47,9 +50,7 @@ impl<'a, 'gcx> RerastDefinitionsFinder<'a, 'gcx> {
             definitions: None,
         };
         intravisit::walk_crate(&mut finder, krate);
-        finder
-            .definitions
-            .expect("Internal error, failed to find rerast type definitions")
+        finder.definitions
     }
 }
 

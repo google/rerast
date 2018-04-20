@@ -23,7 +23,10 @@ fn test_help() {
 
 #[test]
 fn test_simple_diff() {
+    // TODO: Remove once #10 is fixed.
+    let env = assert_cli::Environment::inherit().insert("RERAST_FULL_CARGO_CLEAN", "1");
     cargo_rerast("tests/crates/simple")
+        .with_env(&env)
         .with_args(&["-p", "p0: i32, p1: i32"])
         .with_args(&["-s", "p0 > p1"])
         .with_args(&["-r", "p1 < p0"])

@@ -343,7 +343,24 @@ fn find_and_apply_rules<'a, 'gcx>(
 ) -> Result<RerastOutput, RerastErrors> {
     let tcx = state.tcx.unwrap();
     let krate = tcx.hir.krate();
-    let rerast_definitions = RerastDefinitionsFinder::find_definitions(tcx, krate);
+    let rerast_definitions = match RerastDefinitionsFinder::find_definitions(tcx, krate) {
+        Some(r) => r,
+        None => {
+            if config.verbose {
+                if let syntax_pos::FileName::Real(filename) =
+                    tcx.sess.codemap().span_to_filename(krate.module.inner)
+                {
+                    println!(
+                        "A build target was skipped due to apparently being empty: {:?}",
+                        filename
+                    );
+                }
+            }
+            // Most likely the entire compilation target is empty due to a cfg attribute at the
+            // root.
+            return Ok(RerastOutput::new());
+        }
+    };
     let rules =
         rule_finder::RuleFinder::find_rules(tcx, rerast_definitions, krate).map_err(|errors| {
             RerastErrors::new(

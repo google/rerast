@@ -66,9 +66,16 @@ fn clean_local_targets() -> Result<(), Error> {
     let parsed = json::parse(metadata_str)?;
     for package in parsed["packages"].members() {
         if let Some(name) = package["name"].as_str() {
-            std::process::Command::new("cargo")
-                .args(vec!["clean", "--package", name])
-                .status()?;
+            // TODO: Remove once #10 is fixed.
+            if std::env::var("RERAST_FULL_CARGO_CLEAN") == Ok("1".to_string()) {
+                std::process::Command::new("cargo")
+                    .args(vec!["clean"])
+                    .status()?;
+            } else {
+                std::process::Command::new("cargo")
+                    .args(vec!["clean", "--package", name])
+                    .status()?;
+            }
         }
     }
     Ok(())
