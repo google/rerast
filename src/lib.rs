@@ -83,14 +83,14 @@ extern crate syntax_pos;
 
 pub mod chunked_diff;
 pub mod change_to_rule;
+pub mod errors;
+pub mod code_substitution;
 mod file_loader;
 mod validation;
 mod rules;
 mod rule_finder;
 mod rule_matcher;
 mod definitions;
-mod errors;
-mod code_substitution;
 
 use syntax::ast::NodeId;
 use syntax::symbol::Symbol;
@@ -105,15 +105,15 @@ use rustc::hir::{self, intravisit};
 use rustc::ty::TyCtxt;
 use std::rc::Rc;
 use std::cell::RefCell;
-use itertools::Itertools;
-use syntax::codemap::{FileLoader, RealFileLoader};
+use syntax::codemap::FileLoader;
 use std::path::{Path, PathBuf};
 use file_loader::InMemoryFileLoader;
 use definitions::{RerastDefinitions, RerastDefinitionsFinder};
-use code_substitution::CodeSubstitution;
+use code_substitution::{CodeSubstitution, FileRelativeSubstitutions};
 use errors::RerastErrors;
 use rule_finder::StartMatch;
 use rules::Rules;
+use std::io;
 
 #[derive(Debug, Clone, Default)]
 pub struct Config {
@@ -195,6 +195,7 @@ const RULES_MOD_NAME: &str = "__rerast_rules";
 const CODE_FOOTER: &str = stringify!(
     #[macro_use]
     pub mod __rerast_internal;
+    #[doc(hidden)]
     pub mod __rerast_rules;
 );
 
@@ -264,7 +265,7 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
         }
     }
 
-    fn apply_to_crate(&self, krate: &'gcx hir::Crate) -> HashMap<PathBuf, String> {
+    fn apply_to_crate(&self, krate: &'gcx hir::Crate) -> FileRelativeSubstitutions {
         let codemap = self.tcx.sess.codemap();
 
         let matches = rule_matcher::RuleMatcher::find_matches(
@@ -274,39 +275,31 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
             &self.rules,
             self.config.clone(),
         );
-        let substitutions = rule_matcher::sorted_substitions_for_matches(self.tcx, &matches);
-        let mut updated_files = HashMap::new();
-        let substitutions_grouped_by_file = substitutions
-            .into_iter()
-            .group_by(|subst| codemap.span_to_filename(subst.span));
-        for (filename, file_substitutions) in &substitutions_grouped_by_file {
-            if let syntax_pos::FileName::Real(ref path) = filename {
-                let filemap = codemap.get_filemap(&filename).unwrap();
-                let mut output = CodeSubstitution::apply(
-                    file_substitutions,
-                    codemap,
-                    Span::new(filemap.start_pos, filemap.end_pos, SyntaxContext::empty()),
-                );
-                if output.ends_with(CODE_FOOTER) {
-                    output = output.trim_right_matches(CODE_FOOTER).to_owned();
-                }
-                updated_files.insert(path.clone(), output);
-            }
-        }
-        updated_files
+        let codemap_relative_substitutions =
+            rule_matcher::substitions_for_matches(self.tcx, &matches);
+        CodeSubstitution::as_file_relative_substitutions(codemap_relative_substitutions, codemap)
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct RerastOutput {
-    pub updated_files: HashMap<PathBuf, String>,
+    pub(crate) file_relative_substitutions: FileRelativeSubstitutions,
 }
 
 impl RerastOutput {
-    fn new() -> RerastOutput {
+    pub fn new() -> RerastOutput {
         RerastOutput {
-            updated_files: HashMap::new(),
+            file_relative_substitutions: FileRelativeSubstitutions::empty(),
         }
+    }
+
+    pub fn updated_files(self, file_loader: &FileLoader) -> io::Result<HashMap<PathBuf, String>> {
+        self.file_relative_substitutions.updated_files(file_loader)
+    }
+
+    pub fn merge(&mut self, other: RerastOutput) {
+        self.file_relative_substitutions
+            .merge(other.file_relative_substitutions);
     }
 }
 
@@ -365,7 +358,7 @@ fn find_and_apply_rules<'a, 'gcx>(
     }
     let replacer = Replacer::new(tcx, rerast_definitions, rules, config);
     Ok(RerastOutput {
-        updated_files: replacer.apply_to_crate(krate),
+        file_relative_substitutions: replacer.apply_to_crate(krate),
     })
 }
 
@@ -465,23 +458,13 @@ impl RerastCompilerDriver {
             .map(|s| s.as_ref())
     }
 
-    // Apply rules from `rules`, or if that is empty, read `rules_file`.
-    pub fn apply_rules_from_string_or_file(
+    // TODO: Consider just removing this method.
+    pub fn apply_rules_from_string<T: FileLoader + Send + Sync + 'static>(
         &self,
         rules: String,
-        rules_file: &str,
         config: Config,
+        file_loader: T,
     ) -> Result<RerastOutput, RerastErrors> {
-        let file_loader = RealFileLoader;
-        let rules = if rules.is_empty() {
-            file_loader
-                .read_file(&PathBuf::from(rules_file))
-                .map_err(|e| {
-                    RerastErrors::with_message(format!("Error opening {}: {}", rules_file, e))
-                })?
-        } else {
-            rules
-        };
         let rules = remove_extern_crate_rerast_from_rules(&rules);
         self.apply_rules_to_code(file_loader, rules, config)
     }
@@ -572,7 +555,7 @@ mod tests {
         common: &str,
         rule: &str,
         code: &str,
-    ) -> Result<RerastOutput, RerastErrors> {
+    ) -> Result<HashMap<PathBuf, String>, RerastErrors> {
         let mut file_loader = InMemoryFileLoader::new(NullFileLoader);
         file_loader.add_file("common.rs".to_owned(), common.to_owned());
         let header1 = r#"#![allow(unused_imports)]
@@ -594,19 +577,20 @@ mod tests {
             .arg("lib")
             .arg(CODE_FILE_NAME);
         let driver = RerastCompilerDriver::new(args);
-        let mut output =
-            driver.apply_rules_to_code(file_loader, rule_header + rule, Config::default())?;
+        let output =
+            driver.apply_rules_to_code(file_loader.clone(), rule_header + rule, Config::default())?;
+        let mut updated_files = output.updated_files(&file_loader)?;
         if let hash_map::Entry::Occupied(mut entry) =
-            output.updated_files.entry(PathBuf::from(CODE_FILE_NAME))
+            updated_files.entry(PathBuf::from(CODE_FILE_NAME))
         {
             let contents = entry.get_mut();
             assert!(contents.starts_with(&code_header));
             *contents = contents[code_header.len()..].to_owned();
         }
-        Ok(output)
+        Ok(updated_files)
     }
 
-    fn apply_rule_to_test_code(common: &str, rule: &str, code: &str) -> RerastOutput {
+    fn apply_rule_to_test_code(common: &str, rule: &str, code: &str) -> HashMap<PathBuf, String> {
         match maybe_apply_rule_to_test_code(common, rule, code) {
             Ok(output) => output,
             Err(errors) => {
@@ -616,7 +600,7 @@ mod tests {
     }
 
     fn check(common: &str, rule: &str, input: &str, expected: &str) {
-        let updated_files = apply_rule_to_test_code(common, &rule.to_string(), input).updated_files;
+        let updated_files = apply_rule_to_test_code(common, &rule.to_string(), input);
         let is_other_filename =
             |filename| filename != Path::new(CODE_FILE_NAME) && filename != Path::new("common.rs");
         if updated_files.keys().any(is_other_filename) {
@@ -636,7 +620,7 @@ mod tests {
     }
 
     fn check_no_match(common: &str, rule: &str, input: &str) {
-        let updated_files = apply_rule_to_test_code(common, rule, input).updated_files;
+        let updated_files = apply_rule_to_test_code(common, rule, input);
         if !updated_files.is_empty() {
             println!("Unexpected: {:?}", updated_files);
         }

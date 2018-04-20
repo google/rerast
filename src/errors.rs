@@ -102,7 +102,7 @@ impl RerastErrors {
     pub(crate) fn new(errors: Vec<RerastError>) -> RerastErrors {
         RerastErrors(errors)
     }
-    pub(crate) fn with_message<T: Into<String>>(message: T) -> RerastErrors {
+    pub fn with_message<T: Into<String>>(message: T) -> RerastErrors {
         RerastErrors(vec![
             RerastError {
                 message: message.into(),

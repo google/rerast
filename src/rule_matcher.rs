@@ -132,10 +132,7 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
 
         let maybe_match_placeholders = self.tcx.infer_ctxt().enter(|infcx| {
             let tcx = infcx.tcx;
-            let substs = infcx.fresh_substs_for_item(
-                tcx.def_span(rule_fn_id),
-                rule_fn_id,
-            );
+            let substs = infcx.fresh_substs_for_item(tcx.def_span(rule_fn_id), rule_fn_id);
             let placeholder_types_by_id = rule_body
                 .arguments
                 .iter()
@@ -1226,11 +1223,10 @@ impl<'r, 'a, 'gcx, 'tcx, T: StartMatch> Match<'r, 'gcx, T> {
         };
         let codemap = tcx.sess.codemap();
         T::walk(&mut replacement_visitor, replacement);
-        let mut substitutions = replacement_visitor.result;
-        substitutions.sort();
+        let substitutions = replacement_visitor.result;
         //Replacer::print_macro_backtrace("SPAN_BT", codemap, replacement.span());
-        CodeSubstitution::apply(
-            substitutions.into_iter(),
+        CodeSubstitution::apply_with_codemap(
+            &substitutions,
             codemap,
             replacement.span().source_callsite(),
         )
@@ -1453,11 +1449,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
             } else if let Some(node_id) = node_id_from_path(path) {
                 if let Some(code_node_id) = self.substitute_node_ids.get(&node_id) {
                     let code = self.node_id_snippet(*code_node_id);
-                    self.result.push(CodeSubstitution {
-                        span: expr.span,
-                        new_code: code,
-                        needs_parenthesis: false,
-                    });
+                    self.result.push(CodeSubstitution::new(expr.span, code));
                     return true;
                 }
             }
@@ -1470,14 +1462,13 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
         let span = placeholder
             .contents
             .get_span(self.current_match.original_span);
-        let substitutions = sorted_substitions_for_matches(self.tcx, &placeholder.matches);
-        let new_code = CodeSubstitution::apply(substitutions.into_iter(), codemap, span);
+        let substitutions = substitions_for_matches(self.tcx, &placeholder.matches);
+        let new_code = CodeSubstitution::apply_with_codemap(&substitutions, codemap, span);
 
-        self.result.push(CodeSubstitution {
-            span: placeholder_span,
-            new_code,
-            needs_parenthesis: placeholder.contents.needs_parenthesis(self.parent_expr),
-        });
+        self.result.push(
+            CodeSubstitution::new(placeholder_span, new_code)
+                .needs_parenthesis(placeholder.contents.needs_parenthesis(self.parent_expr)),
+        );
     }
 }
 
@@ -1543,7 +1534,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
     }
 }
 
-pub(crate) fn sorted_substitions_for_matches<'r, 'a, 'gcx>(
+pub(crate) fn substitions_for_matches<'r, 'a, 'gcx>(
     tcx: TyCtxt<'a, 'gcx, 'gcx>,
     matches: &Matches<'r, 'gcx>,
 ) -> Vec<CodeSubstitution> {
@@ -1567,6 +1558,5 @@ pub(crate) fn sorted_substitions_for_matches<'r, 'a, 'gcx>(
     add_substitions_for_matches(tcx, &matches.pattern_matches, &mut substitutions);
     add_substitions_for_matches(tcx, &matches.type_matches, &mut substitutions);
     add_substitions_for_matches(tcx, &matches.trait_ref_matches, &mut substitutions);
-    substitutions.sort();
     substitutions
 }

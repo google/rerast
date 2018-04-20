@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![feature(rustc_private)]
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 
@@ -22,16 +23,18 @@ extern crate colored;
 extern crate failure;
 extern crate json;
 extern crate rerast;
+extern crate syntax;
 
 use json::JsonValue;
 use std::io::Write;
-use rerast::{ArgBuilder, Config, RerastCompilerDriver};
+use rerast::{ArgBuilder, Config, RerastCompilerDriver, RerastOutput};
 use rerast::chunked_diff;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::path::Path;
 use clap::ArgMatches;
 use failure::Error;
+use syntax::codemap::RealFileLoader;
 
 // Environment variables that we use to pass data from the outer invocation of cargo-rerast through
 // to the inner invocation which runs within cargo check.
@@ -297,14 +300,13 @@ fn cargo_rerast() -> Result<(), Error> {
         || matches.is_present("search_trait_ref")
     {
         bail!("Searching without --replace_with is not yet implemented");
+    } else if let Some(rules_file) = matches.value_of("rules_file") {
+        let mut rules = String::new();
+        File::open(rules_file)?.read_to_string(&mut rules)?;
+        rules
     } else {
-        "".to_owned()
+        bail!("Must specify either --rules_file or both of --search and --replacement");
     };
-    let rules_file = matches.value_of("rules_file").unwrap_or("");
-    ensure!(
-        rules_file.is_empty() != rules.is_empty(),
-        "Must specify either --rules_file or both of --search and --replacement"
-    );
     let action = Action::from_matches(matches)?;
     if config.verbose {
         println!("Running cargo check in order to build dependencies and get rustc commands");
@@ -316,6 +318,7 @@ fn cargo_rerast() -> Result<(), Error> {
         get_rustc_commandlines_for_local_package()?
     };
 
+    let mut updates_to_apply = RerastOutput::new();
     for rustc_args in &rustc_command_lines {
         let driver = RerastCompilerDriver::new(ArgBuilder::from_args(rustc_args.iter().cloned()));
         let code_filename = driver.code_filename().ok_or_else(|| {
@@ -327,19 +330,24 @@ fn cargo_rerast() -> Result<(), Error> {
         if config.verbose {
             println!("Processing {}", code_filename);
         }
-        match driver.apply_rules_from_string_or_file(rules.clone(), rules_file, config.clone()) {
+
+        let output_or_error =
+            driver.apply_rules_from_string(rules.clone(), config.clone(), RealFileLoader);
+        match output_or_error {
             Ok(output) => {
-                if config.verbose && output.updated_files.is_empty() {
-                    println!("No matches found in {} or submodules", code_filename);
-                }
-                for (filename, new_contents) in output.updated_files {
-                    action.process(&filename, &new_contents)?;
-                }
+                updates_to_apply.merge(output);
             }
             Err(errors) => {
                 bail!("{}", errors);
             }
         }
+    }
+    let updated_files = updates_to_apply.updated_files(&RealFileLoader)?;
+    if config.verbose && updated_files.is_empty() {
+        println!("No matches found");
+    }
+    for (filename, new_contents) in updated_files {
+        action.process(&filename, &new_contents)?;
     }
     Ok(())
 }
