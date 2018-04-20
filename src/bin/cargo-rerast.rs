@@ -436,13 +436,6 @@ pub fn main() {
         if driver.args().has_arg("--print=cfg") || driver.is_compiling_dependency() {
             pass_through_to_actual_compiler();
         } else {
-            // I'm not sure how the environment variable OUT_DIR normally gets set, but it's not set
-            // when cargo calls us, even if we're acting as a rustc wrapper. It does however pass
-            // --out-dir as a flag, so we get the value of that an put it into the environment
-            // variable.
-            if let Some(out_dir) = driver.get_arg_after("--out-dir") {
-                std::env::set_var("OUT_DIR", out_dir);
-            }
             let json_args: Vec<JsonValue> = std::env::args().map(JsonValue::String).collect();
             let mut env_vars = JsonValue::new_object();
             for (k, v) in std::env::vars() {
