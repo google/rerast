@@ -109,7 +109,7 @@ use syntax::codemap::FileLoader;
 use std::path::{Path, PathBuf};
 use file_loader::InMemoryFileLoader;
 use definitions::{RerastDefinitions, RerastDefinitionsFinder};
-use code_substitution::{CodeSubstitution, FileRelativeSubstitutions};
+use code_substitution::FileRelativeSubstitutions;
 use errors::RerastErrors;
 use rule_finder::StartMatch;
 use rules::Rules;
@@ -296,7 +296,7 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
         );
         let codemap_relative_substitutions =
             rule_matcher::substitions_for_matches(self.tcx, &matches);
-        CodeSubstitution::as_file_relative_substitutions(codemap_relative_substitutions, codemap)
+        FileRelativeSubstitutions::new(codemap_relative_substitutions, codemap)
     }
 }
 

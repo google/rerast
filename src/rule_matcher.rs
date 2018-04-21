@@ -1421,7 +1421,7 @@ fn all_expansions_equal(rule_span: Span, code_span: Span) -> bool {
 // from the matched source then recording the spans for said replacement.
 struct ReplacementVisitor<'r, 'a: 'r, 'gcx: 'a, T: StartMatch + 'gcx> {
     tcx: TyCtxt<'a, 'gcx, 'gcx>,
-    result: Vec<CodeSubstitution>,
+    result: Vec<CodeSubstitution<Span>>,
     current_match: &'r Match<'r, 'gcx, T>,
     parent_expr: Option<&'gcx hir::Expr>,
     // Map from NodeIds of variables declared in the replacement pattern to NodeIds declared in the
@@ -1537,11 +1537,11 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
 pub(crate) fn substitions_for_matches<'r, 'a, 'gcx>(
     tcx: TyCtxt<'a, 'gcx, 'gcx>,
     matches: &Matches<'r, 'gcx>,
-) -> Vec<CodeSubstitution> {
+) -> Vec<CodeSubstitution<Span>> {
     fn add_substitions_for_matches<'r, 'a, 'gcx, T: StartMatch>(
         tcx: TyCtxt<'a, 'gcx, 'gcx>,
         matches: &[Match<'r, 'gcx, T>],
-        substitutions: &mut Vec<CodeSubstitution>,
+        substitutions: &mut Vec<CodeSubstitution<Span>>,
     ) {
         for m in matches {
             let replacement_src = m.get_replacement_source(tcx);
