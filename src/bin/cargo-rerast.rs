@@ -99,18 +99,18 @@ fn get_compiler_invocation_infos_for_local_package() -> Result<Vec<CompilerInvoc
     clean_local_targets()?;
     let current_exe = std::env::current_exe().expect("env::current_exe() failed");
     // The -j 1 flags are to prevent interleaving of stdout from corrupting our JSON. See issue #5.
-    let cargo_check_output = std::process::Command::new("cargo")
-        .env(var_names::PRINT_ARGS_JSON, "yes")
-        .env("RUSTC_WRAPPER", current_exe)
-        .args(vec![
+    let cargo_args = vec![
             "check",
             "-j",
             "1",
-            "-v",
             "--tests",
             "--benches",
             "--examples",
-        ])
+        ];
+    let cargo_check_output = std::process::Command::new("cargo")
+        .env(var_names::PRINT_ARGS_JSON, "yes")
+        .env("RUSTC_WRAPPER", current_exe)
+        .args(cargo_args.clone())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .output()
@@ -118,13 +118,17 @@ fn get_compiler_invocation_infos_for_local_package() -> Result<Vec<CompilerInvoc
     let output_str = std::str::from_utf8(cargo_check_output.stdout.as_slice())?;
     ensure!(
         cargo_check_output.status.code() == Some(0),
-        "cargo check failed (exit code = {}). Output follows:\n{}",
+        "cargo check failed (exit code = {}). Output follows:\n\
+         {}\n\n\
+         To reproduce outside of rerast, try running:\n\
+         cargo {}",
         cargo_check_output
             .status
             .code()
             .map(|c| c.to_string())
             .unwrap_or_else(|| "signal".to_owned()),
-        std::str::from_utf8(cargo_check_output.stderr.as_slice())?
+        std::str::from_utf8(cargo_check_output.stderr.as_slice())?,
+        cargo_args.join(" ")
     );
     let mut result: Vec<CompilerInvocationInfo> = Vec::new();
     for line in output_str.lines() {
