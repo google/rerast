@@ -448,6 +448,8 @@ fn pass_through_to_actual_compiler() {
 }
 
 pub fn main() {
+    // See issue #17. May be able to be removed in the future.
+    std::env::set_var("CARGO_INCREMENTAL", "0");
     let driver =
         RerastCompilerDriver::new(CompilerInvocationInfo::from_args(std::env::args().skip(1)));
     if std::env::var(var_names::PRINT_ARGS_JSON).is_ok() {
