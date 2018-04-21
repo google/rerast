@@ -357,7 +357,7 @@ fn cargo_rerast() -> Result<(), Error> {
         if config.verbose {
             use itertools::Itertools;
             println!(
-                "Running rustc internally as:\n{} rustc {}",
+                "Running rustc internally as:\n{} {}",
                 rustc_invocation_info
                     .env
                     .iter()
