@@ -21,6 +21,7 @@ extern crate clap;
 extern crate colored;
 #[macro_use]
 extern crate failure;
+extern crate itertools;
 extern crate json;
 extern crate rerast;
 extern crate syntax;
@@ -353,6 +354,18 @@ fn cargo_rerast() -> Result<(), Error> {
 
     let mut updates_to_apply = RerastOutput::new();
     for rustc_invocation_info in &compiler_invocation_infos {
+        if config.verbose {
+            use itertools::Itertools;
+            println!(
+                "Running rustc internally as:\n{} rustc {}",
+                rustc_invocation_info
+                    .env
+                    .iter()
+                    .map(|(k, v)| format!("{}={:?}", k, v))
+                    .join(" "),
+                rustc_invocation_info.args.join(" ")
+            );
+        }
         let driver = RerastCompilerDriver::new(rustc_invocation_info.clone());
         let code_filename = driver.code_filename().ok_or_else(|| {
             format_err!(
