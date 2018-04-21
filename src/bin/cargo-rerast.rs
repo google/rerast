@@ -95,22 +95,26 @@ fn read_file_as_string(path: &Path) -> Result<String, Error> {
     read_file_internal(path).map_err(|error| format_err!("Error opening {:?}: {}", path, error))
 }
 
-fn get_compiler_invocation_infos_for_local_package() -> Result<Vec<CompilerInvocationInfo>, Error> {
+fn get_compiler_invocation_infos_for_local_package(
+    matches: &ArgMatches,
+) -> Result<Vec<CompilerInvocationInfo>, Error> {
+    use std::str;
     clean_local_targets()?;
     let current_exe = std::env::current_exe().expect("env::current_exe() failed");
     // The -j 1 flags are to prevent interleaving of stdout from corrupting our JSON. See issue #5.
-    let cargo_args = vec![
-            "check",
-            "-j",
-            "1",
-            "--tests",
-            "--benches",
-            "--examples",
-        ];
+    let check_args = vec!["check", "-j", "1"];
+    let target_args: Vec<_> = match matches.values_of("targets") {
+        Some(targets) => targets.map(|t| format!("--{}", t)).collect(),
+        None => vec!["--tests", "--examples", "--benches"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+    };
     let cargo_check_output = std::process::Command::new("cargo")
         .env(var_names::PRINT_ARGS_JSON, "yes")
         .env("RUSTC_WRAPPER", current_exe)
-        .args(cargo_args.clone())
+        .args(check_args.clone())
+        .args(target_args.clone())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .output()
@@ -121,14 +125,15 @@ fn get_compiler_invocation_infos_for_local_package() -> Result<Vec<CompilerInvoc
         "cargo check failed (exit code = {}). Output follows:\n\
          {}\n\n\
          To reproduce outside of rerast, try running:\n\
-         cargo {}",
+         cargo {} {}",
         cargo_check_output
             .status
             .code()
             .map(|c| c.to_string())
             .unwrap_or_else(|| "signal".to_owned()),
         std::str::from_utf8(cargo_check_output.stderr.as_slice())?,
-        cargo_args.join(" ")
+        check_args.join(" "),
+        target_args.join(" ")
     );
     let mut result: Vec<CompilerInvocationInfo> = Vec::new();
     for line in output_str.lines() {
@@ -277,6 +282,8 @@ fn cargo_rerast() -> Result<(), Error> {
                      --debug_snippet=[CODE_SNIPPET] 'A snippet of code that you think should \
                                                      match or list_all to list all checked \
                                                      snippets.'
+                     --targets=[ARGS]... 'Build targets to process. Defaults to: \
+                                          tests examples benches.'
                      --crate_root=[DIR] 'Root directory of crate. Defaults to current directory.'
                                       \
                      --diff 'Diff changes'
@@ -330,7 +337,7 @@ fn cargo_rerast() -> Result<(), Error> {
         rules.push_str(");}");
         rules
     } else if matches.is_present("replay_git") {
-        let compiler_invocation_infos = get_compiler_invocation_infos_for_local_package()?;
+        let compiler_invocation_infos = get_compiler_invocation_infos_for_local_package(&matches)?;
         let rule_from_change = derive_rule_from_git_change(&compiler_invocation_infos)?;
         maybe_compiler_invocation_infos = Some(compiler_invocation_infos);
         println!("Generated rule:\n{}\n", rule_from_change);
@@ -353,7 +360,7 @@ fn cargo_rerast() -> Result<(), Error> {
     let compiler_invocation_infos = if let Some(existing_value) = maybe_compiler_invocation_infos {
         existing_value
     } else {
-        get_compiler_invocation_infos_for_local_package()?
+        get_compiler_invocation_infos_for_local_package(&matches)?
     };
 
     let mut updates_to_apply = RerastOutput::new();
