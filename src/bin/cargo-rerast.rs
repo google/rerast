@@ -27,7 +27,7 @@ extern crate syntax;
 
 use json::JsonValue;
 use std::io::Write;
-use rerast::{Config, RerastCompilerDriver, RerastOutput, CompilerInvocationInfo};
+use rerast::{CompilerInvocationInfo, Config, RerastCompilerDriver, RerastOutput};
 use rerast::chunked_diff;
 use std::fs::{self, File};
 use std::io::prelude::*;
@@ -101,7 +101,15 @@ fn get_compiler_invocation_infos_for_local_package() -> Result<Vec<CompilerInvoc
     let cargo_check_output = std::process::Command::new("cargo")
         .env(var_names::PRINT_ARGS_JSON, "yes")
         .env("RUSTC_WRAPPER", current_exe)
-        .args(vec!["check", "-j", "1", "-v", "--tests", "--benches", "--examples"])
+        .args(vec![
+            "check",
+            "-j",
+            "1",
+            "-v",
+            "--tests",
+            "--benches",
+            "--examples",
+        ])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .output()
@@ -144,11 +152,8 @@ fn get_compiler_invocation_infos_for_local_package() -> Result<Vec<CompilerInvoc
                         if let Some(v) = v.as_str() {
                             env.insert(k.to_owned(), v.to_owned());
                         }
-                    };
-                    result.push(CompilerInvocationInfo {
-                        args: args?,
-                        env,
-                    });
+                    }
+                    result.push(CompilerInvocationInfo { args: args?, env });
                 }
             }
         }
@@ -195,8 +200,7 @@ impl Action {
             Action::DiffCmd(ref diff_cmd) => {
                 let mut diff_args_iter = diff_cmd.split(' ');
                 let command = diff_args_iter.next().unwrap_or("diff");
-                let diff_args: Vec<_> =
-                    diff_args_iter.chain(vec![filename, "-"]).collect();
+                let diff_args: Vec<_> = diff_args_iter.chain(vec![filename, "-"]).collect();
                 let mut diff_process = std::process::Command::new(command)
                     .args(diff_args)
                     .stdin(std::process::Stdio::piped())
@@ -381,7 +385,9 @@ fn cargo_rerast() -> Result<(), Error> {
     Ok(())
 }
 
-fn derive_rule_from_git_change(invocation_infos: &[CompilerInvocationInfo]) -> Result<String, Error> {
+fn derive_rule_from_git_change(
+    invocation_infos: &[CompilerInvocationInfo],
+) -> Result<String, Error> {
     let git_diff_output = std::process::Command::new("git")
         .arg("diff")
         .arg("--name-only")
@@ -429,7 +435,8 @@ fn pass_through_to_actual_compiler() {
 }
 
 pub fn main() {
-    let driver = RerastCompilerDriver::new(CompilerInvocationInfo::from_args(std::env::args().skip(1)));
+    let driver =
+        RerastCompilerDriver::new(CompilerInvocationInfo::from_args(std::env::args().skip(1)));
     if std::env::var(var_names::PRINT_ARGS_JSON).is_ok() {
         // If cargo is calling us to get compiler configuration or is compiling
         // a dependent crate, then just run the compiler normally.
@@ -443,9 +450,11 @@ pub fn main() {
                     env_vars[k] = v.into();
                 }
             }
-            println!("{}{}", RERAST_JSON_MARKER, JsonValue::Array(vec![
-                JsonValue::Array(json_args),
-                env_vars]).dump());
+            println!(
+                "{}{}",
+                RERAST_JSON_MARKER,
+                JsonValue::Array(vec![JsonValue::Array(json_args), env_vars]).dump()
+            );
             pass_through_to_actual_compiler();
         }
     } else if let Err(error) = cargo_rerast() {

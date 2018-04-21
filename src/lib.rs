@@ -130,7 +130,10 @@ pub struct CompilerInvocationInfo {
 
 impl CompilerInvocationInfo {
     pub fn new() -> CompilerInvocationInfo {
-        CompilerInvocationInfo { args: Vec::new(), env: HashMap::new() }
+        CompilerInvocationInfo {
+            args: Vec::new(),
+            env: HashMap::new(),
+        }
     }
 
     pub fn from_args<T: Iterator<Item = S>, S: Into<String>>(args: T) -> CompilerInvocationInfo {
@@ -157,13 +160,15 @@ impl CompilerInvocationInfo {
         self.args_iter().any(|a| a == s)
     }
 
-    pub(crate) fn run_compiler<'a>(&self, compiler_calls: &mut CompilerCalls<'a>,
-                                   file_loader: Option<Box<FileLoader + Send + Sync + 'static>>) {
+    pub(crate) fn run_compiler<'a>(
+        &self,
+        compiler_calls: &mut CompilerCalls<'a>,
+        file_loader: Option<Box<FileLoader + Send + Sync + 'static>>,
+    ) {
         for (k, v) in &self.env {
             std::env::set_var(k, v);
         }
-        let (_, _) = rustc_driver::run_compiler(&self.args,
-                                                compiler_calls, file_loader, None);
+        let (_, _) = rustc_driver::run_compiler(&self.args, compiler_calls, file_loader, None);
         for (k, _) in &self.env {
             std::env::set_var(k, "");
         }
@@ -493,7 +498,7 @@ impl RerastCompilerDriver {
     pub fn get_arg_after(&self, before: &str) -> Option<&str> {
         for two_args in self.invocation_info.args.windows(2) {
             if two_args[0] == before {
-                return Some(&two_args[1])
+                return Some(&two_args[1]);
             }
         }
         None

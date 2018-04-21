@@ -690,15 +690,13 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
     loop {
         // Run rustc on modified source to find HIR node that encloses changed code as well as
         // subnodes that will be candidates for placeholders.
-        let invocation_info = compiler_invocations[args_index].clone()
+        let invocation_info = compiler_invocations[args_index]
+            .clone()
             .arg("--sysroot")
             .arg(::rustup_sysroot())
             .arg("--allow")
             .arg("dead_code");
-        invocation_info.run_compiler(
-            &mut compiler_calls,
-            Some(box file_loader.clone()),
-        );
+        invocation_info.run_compiler(&mut compiler_calls, Some(box file_loader.clone()));
         if compiler_calls
             .find_rules_state
             .borrow()
