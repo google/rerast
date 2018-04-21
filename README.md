@@ -140,6 +140,9 @@ you could copy the printed rule into a .rs file and apply it with --rules_file.
 * replace_type! doesn't yet support placeholders.
 * Probably many bugs and missing features. Please feel free to file bugs / feature requests.
 
+## More examples
+See the [COOKBOOK.md](Rerast cookbook) for more examples.
+
 ## Groups
 * [Users group](https://groups.google.com/forum/#!forum/rerast-users)
 * [Developers group](https://groups.google.com/forum/#!forum/rerast-dev)
