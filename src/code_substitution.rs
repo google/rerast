@@ -155,6 +155,16 @@ pub(crate) fn apply_substitutions<'a, S: SpanT + Sized>(
     output
 }
 
+// TODO: We may want to warn if we somehow end up with overlapping matches that aren't duplicates.
+fn remove_duplicate_or_overlapping_matches(matches: &mut Vec<CodeSubstitution<LocalSpan>>) {
+    let mut max_hi = BytePos(0);
+    matches.retain(|subst| {
+        let retain = max_hi <= subst.span.lo;
+        max_hi = ::std::cmp::max(max_hi, subst.span.hi);
+        retain
+    });
+}
+
 #[derive(Debug)]
 pub struct FileRelativeSubstitutions {
     // Substitutions keyed by filename. Each vector of substitutions must be sorted.
@@ -180,7 +190,8 @@ impl FileRelativeSubstitutions {
                     file_relative_for_file
                         .push(subst.as_file_local_substitution(filemap.start_pos));
                 }
-                file_relative_for_file.sort()
+                file_relative_for_file.sort();
+                remove_duplicate_or_overlapping_matches(file_relative_for_file);
             }
         }
         FileRelativeSubstitutions {
@@ -204,14 +215,7 @@ impl FileRelativeSubstitutions {
                     let merged = entry.get_mut();
                     merged.extend(substitutions);
                     merged.sort();
-                    // Remove equal or overlapping substitutions.
-                    // TODO: Issue warning for any overlapping substitutions that aren't equal.
-                    let mut max_hi = BytePos(0);
-                    merged.retain(|subst| {
-                        let retain = max_hi <= subst.span.lo;
-                        max_hi = ::std::cmp::max(max_hi, subst.span.hi);
-                        retain
-                    });
+                    remove_duplicate_or_overlapping_matches(merged);
                 }
             }
         }

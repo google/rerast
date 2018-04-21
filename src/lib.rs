@@ -1788,6 +1788,18 @@ mod tests {
         );
     }
 
+    // If a macro emits an expression twice and we match that expression, we should discard one of
+    // the matches.
+    #[test]
+    fn test_macro_emits_code_twice() {
+        check(
+            "macro_rules! dupe {($a:expr) => (($a, $a))}",
+            "fn r1() {replace!(41 => 42);}",
+            "fn f() -> (i32, i32) {dupe!(41)}",
+            "fn f() -> (i32, i32) {dupe!(42)}",
+        );
+    }
+
     // Verify that using a placeholder multiple times in a search pattern is an error.
     #[test]
     fn error_multiple_bindings() {
