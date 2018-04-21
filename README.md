@@ -141,7 +141,7 @@ you could copy the printed rule into a .rs file and apply it with --rules_file.
 * Probably many bugs and missing features. Please feel free to file bugs / feature requests.
 
 ## More examples
-See the [COOKBOOK.md](Rerast cookbook) for more examples.
+See the [Rerast Cookbook](COOKBOOK.md) for more examples.
 
 ## Groups
 * [Users group](https://groups.google.com/forum/#!forum/rerast-users)
