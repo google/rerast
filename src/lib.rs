@@ -80,6 +80,7 @@ extern crate rustc;
 extern crate rustc_driver;
 extern crate syntax;
 extern crate syntax_pos;
+extern crate rustc_data_structures;
 
 pub mod chunked_diff;
 pub mod change_to_rule;
@@ -162,7 +163,7 @@ impl CompilerInvocationInfo {
 
     pub(crate) fn run_compiler<'a>(
         &self,
-        compiler_calls: &mut CompilerCalls<'a>,
+        compiler_calls: &mut (CompilerCalls<'a> + rustc_data_structures::sync::Send),
         file_loader: Option<Box<FileLoader + Send + Sync + 'static>>,
     ) {
         for (k, v) in &self.env {
