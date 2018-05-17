@@ -94,7 +94,7 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
                 if let hir::PatKind::Path(hir::QPath::Resolved(None, ref path)) = arm.pats[0].node {
                     if let Some(segment) = path.segments.last() {
                         if segment.name == arm_name {
-                            if let hir::Expr_::ExprBlock(ref block) = arm.body.node {
+                            if let hir::Expr_::ExprBlock(ref block, _) = arm.body.node {
                                 return Some(block);
                             }
                         }

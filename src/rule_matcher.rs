@@ -244,7 +244,7 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
         let old_body_id = self.body_id;
         self.body_id = Some(body.id());
         match body.value.node {
-            hir::Expr_::ExprBlock(_) => {
+            hir::Expr_::ExprBlock(_, _) => {
                 // We want to ensure that visit_expr is not called for the root expression of our
                 // body (the block), since we don't want to replace it. But we still want to visit
                 // the body arguments, so we do so explicitly.
@@ -550,8 +550,8 @@ impl Matchable for hir::Expr {
                 p_path.attempt_match(state, c_path) && p_fields.attempt_match(state, c_fields)
                     && p_expr.attempt_match(state, c_expr)
             }
-            (&ExprBlock(ref p_block), &ExprBlock(ref c_block)) => {
-                p_block.attempt_match(state, c_block)
+            (&ExprBlock(ref p_block, ref p_label), &ExprBlock(ref c_block, ref c_label)) => {
+                p_block.attempt_match(state, c_block) && p_label.attempt_match(state, c_label)
             }
             (&ExprCast(ref p_expr, ref _p_ty), &ExprCast(ref c_expr, ref _c_ty)) => {
                 p_expr.attempt_match(state, c_expr)
