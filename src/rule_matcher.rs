@@ -526,8 +526,8 @@ impl Matchable for hir::Expr {
             }
             (&ExprTup(ref p_vec), &ExprTup(ref c_vec))
             | (&ExprArray(ref p_vec), &ExprArray(ref c_vec)) => p_vec.attempt_match(state, c_vec),
-            (&ExprRepeat(ref p_expr, ref p_body_id), &ExprRepeat(ref c_expr, ref c_body_id)) => {
-                p_expr.attempt_match(state, c_expr) && p_body_id.attempt_match(state, c_body_id)
+            (&ExprRepeat(ref p_expr, ref p_const), &ExprRepeat(ref c_expr, ref c_const)) => {
+                p_expr.attempt_match(state, c_expr) && p_const.attempt_match(state, c_const)
             }
             (
                 &ExprIf(ref p_cond, ref p_block, ref p_else),
@@ -1061,6 +1061,16 @@ impl Matchable for hir::Item_ {
             // TODO: Others
             _ => false,
         }
+    }
+}
+
+impl Matchable for hir::AnonConst {
+    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+        &self,
+        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
+        code: &'gcx Self,
+    ) -> bool {
+        self.body.attempt_match(state, &code.body)
     }
 }
 
