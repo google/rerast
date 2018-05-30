@@ -807,7 +807,7 @@ impl Matchable for hir::Pat {
                     pats: &hir::HirVec<Spanned<hir::FieldPat>>,
                 ) -> Vec<&Spanned<hir::FieldPat>> {
                     let mut result: Vec<_> = pats.iter().collect();
-                    result.sort_by_key(|pat| pat.node.name);
+                    result.sort_by_key(|pat| pat.node.ident.name);
                     result
                 }
 
@@ -859,7 +859,7 @@ impl Matchable for hir::Field {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.name.attempt_match(state, &code.name) && self.expr.attempt_match(state, &code.expr)
+        self.ident.attempt_match(state, &code.ident) && self.expr.attempt_match(state, &code.expr)
     }
 }
 
@@ -869,7 +869,7 @@ impl Matchable for hir::FieldPat {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.name.attempt_match(state, &code.name) && self.pat.attempt_match(state, &code.pat)
+        self.ident.attempt_match(state, &code.ident) && self.pat.attempt_match(state, &code.pat)
     }
 }
 

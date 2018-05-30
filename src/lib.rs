@@ -606,6 +606,7 @@ mod tests {
         file_loader.add_file("common.rs".to_owned(), common.to_owned());
         let header1 = r#"#![allow(unused_imports)]
                          #![allow(unused_variables)]
+                         #![allow(unused_must_use)]
                          "#;
         let header2 = "use common::*;\n";
         let code_header = r#"
