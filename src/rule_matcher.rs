@@ -1095,14 +1095,15 @@ impl Matchable for hir::Visibility {
         use hir::Visibility::*;
         match (self, code) {
             (
-                &Restricted {
+                Restricted {
                     path: ref p_path, ..
                 },
-                &Restricted {
+                Restricted {
                     path: ref c_path, ..
                 },
             ) => p_path.attempt_match(state, c_path),
-            (&Public, &Public) | (&Crate, &Crate) | (&Inherited, &Inherited) => true,
+            (Crate(p_sugar), Crate(c_sugar)) => p_sugar == c_sugar,
+            (Public, Public) | (Inherited, Inherited) => true,
             _ => false,
         }
     }
