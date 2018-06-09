@@ -26,17 +26,17 @@ extern crate json;
 extern crate rerast;
 extern crate syntax;
 
-use json::JsonValue;
-use std::io::Write;
-use rerast::{CompilerInvocationInfo, Config, RerastCompilerDriver, RerastOutput};
-use rerast::chunked_diff;
-use std::fs::{self, File};
-use std::io::prelude::*;
-use std::path::Path;
 use clap::ArgMatches;
 use failure::Error;
-use syntax::codemap::RealFileLoader;
+use json::JsonValue;
+use rerast::chunked_diff;
+use rerast::{CompilerInvocationInfo, Config, RerastCompilerDriver, RerastOutput};
 use std::collections::HashMap;
+use std::fs::{self, File};
+use std::io::prelude::*;
+use std::io::Write;
+use std::path::Path;
+use syntax::codemap::RealFileLoader;
 
 // Environment variables that we use to pass data from the outer invocation of cargo-rerast through
 // to the inner invocation which runs within cargo check.
@@ -200,7 +200,8 @@ impl Action {
     }
 
     fn process(&self, path: &Path, new_contents: &str) -> Result<(), Error> {
-        let filename = path.to_str()
+        let filename = path
+            .to_str()
             .ok_or_else(|| format_err!("Path wasn't valid UTF-8"))?;
         match *self {
             Action::Diff => {
@@ -342,7 +343,8 @@ fn cargo_rerast() -> Result<(), Error> {
         maybe_compiler_invocation_infos = Some(compiler_invocation_infos);
         println!("Generated rule:\n{}\n", rule_from_change);
         rule_from_change
-    } else if matches.is_present("search") || matches.is_present("search_type")
+    } else if matches.is_present("search")
+        || matches.is_present("search_type")
         || matches.is_present("search_pattern")
         || matches.is_present("search_trait_ref")
     {

@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use syntax::ext::quote::rt::Span;
-use syntax::codemap::CodeMap;
-use std::collections::{hash_map, HashMap};
-use syntax_pos::{self, BytePos};
-use std::path::PathBuf;
 use itertools::Itertools;
+use std::collections::{hash_map, HashMap};
 use std::io;
+use std::path::PathBuf;
+use syntax::codemap::CodeMap;
 use syntax::codemap::FileLoader;
+use syntax::ext::quote::rt::Span;
+use syntax_pos::{self, BytePos};
 
 /// A span within a file. Also differs from rustc's Span in that it's not interned, which allows us
 /// to make use of it after the compiler has finished running.

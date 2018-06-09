@@ -81,7 +81,8 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RerastDefinitionsFinder<'a, '
         if self.tcx.item_name(fn_id) == "rerast_types" {
             let tables = self.tcx.typeck_tables_of(fn_id);
             let hir = &self.tcx.hir;
-            let mut types = body.arguments
+            let mut types = body
+                .arguments
                 .iter()
                 .map(|arg| tables.node_id_to_type(hir.node_to_hir_id(arg.id)));
             self.definitions = Some(RerastDefinitions {

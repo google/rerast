@@ -77,44 +77,44 @@ extern crate getopts;
 extern crate itertools;
 extern crate rerast_macros;
 extern crate rustc;
+extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate syntax;
 extern crate syntax_pos;
-extern crate rustc_data_structures;
 
-pub mod chunked_diff;
 pub mod change_to_rule;
-pub mod errors;
+pub mod chunked_diff;
 pub mod code_substitution;
+mod definitions;
+pub mod errors;
 mod file_loader;
-mod validation;
-mod rules;
 mod rule_finder;
 mod rule_matcher;
-mod definitions;
+mod rules;
+mod validation;
 
-use syntax::ast::NodeId;
-use syntax::symbol::Symbol;
-use syntax::codemap::{self, CodeMap};
-use syntax::ext::quote::rt::Span;
-use syntax_pos::SyntaxContext;
-use std::vec::Vec;
-use std::collections::HashMap;
-use rustc_driver::{driver, Compilation, CompilerCalls, RustcDefaultCalls};
-use rustc::session::Session;
-use rustc::hir::{self, intravisit};
-use rustc::ty::TyCtxt;
-use std::rc::Rc;
-use std::cell::RefCell;
-use syntax::codemap::FileLoader;
-use std::path::{Path, PathBuf};
-use file_loader::InMemoryFileLoader;
-use definitions::{RerastDefinitions, RerastDefinitionsFinder};
 use code_substitution::FileRelativeSubstitutions;
+use definitions::{RerastDefinitions, RerastDefinitionsFinder};
 use errors::RerastErrors;
+use file_loader::InMemoryFileLoader;
 use rule_finder::StartMatch;
 use rules::Rules;
+use rustc::hir::{self, intravisit};
+use rustc::session::Session;
+use rustc::ty::TyCtxt;
+use rustc_driver::{driver, Compilation, CompilerCalls, RustcDefaultCalls};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::vec::Vec;
+use syntax::ast::NodeId;
+use syntax::codemap::FileLoader;
+use syntax::codemap::{self, CodeMap};
+use syntax::ext::quote::rt::Span;
+use syntax::symbol::Symbol;
+use syntax_pos::SyntaxContext;
 
 #[derive(Debug, Clone, Default)]
 pub struct Config {
@@ -523,7 +523,8 @@ impl RerastCompilerDriver {
         rules: String,
         config: Config,
     ) -> Result<RerastOutput, RerastErrors> {
-        let invocation_info = self.invocation_info
+        let invocation_info = self
+            .invocation_info
             .clone()
             .arg("--sysroot")
             .arg(rustup_sysroot())
@@ -693,7 +694,8 @@ mod tests {
                         assert_eq!(1, file_lines.lines.len());
                         let line_info = &file_lines.lines[0];
                         if let Some(line) = file_lines.file.get_line(line_info.line_index) {
-                            let snippet: String = line.chars()
+                            let snippet: String = line
+                                .chars()
                                 .skip(line_info.start_col.0)
                                 .take(line_info.end_col.0 - line_info.start_col.0)
                                 .collect();

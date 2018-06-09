@@ -12,28 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{HashMap, HashSet};
-use syntax_pos::SpanSnippetError;
-use rustc::ty::subst::Subst;
-use syntax::codemap::{self, Spanned};
-use syntax::ast;
-use syntax::ptr::P;
-use syntax::ast::NodeId;
-use rustc::hir::{self, intravisit};
-use rustc::ty::{self, TyCtxt};
-use syntax::ext::quote::rt::Span;
-use rules::{Rule, Rules};
-use rustc::infer::{self, InferCtxt};
-use syntax::symbol::Symbol;
-use std::mem;
-use std::fmt::Debug;
-use rustc::traits::ObligationCause;
-use definitions::RerastDefinitions;
-use syntax;
-use rule_finder::StartMatch;
-use Config;
-use code_substitution::CodeSubstitution;
 use super::node_id_from_path;
+use code_substitution::CodeSubstitution;
+use definitions::RerastDefinitions;
+use rule_finder::StartMatch;
+use rules::{Rule, Rules};
+use rustc::hir::{self, intravisit};
+use rustc::infer::{self, InferCtxt};
+use rustc::traits::ObligationCause;
+use rustc::ty::subst::Subst;
+use rustc::ty::{self, TyCtxt};
+use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
+use std::mem;
+use syntax;
+use syntax::ast;
+use syntax::ast::NodeId;
+use syntax::codemap::{self, Spanned};
+use syntax::ext::quote::rt::Span;
+use syntax::ptr::P;
+use syntax::symbol::Symbol;
+use syntax_pos::SpanSnippetError;
+use Config;
 
 #[macro_export]
 macro_rules! debug {
@@ -328,7 +328,8 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
                 let cause = ObligationCause::dummy();
                 let param_env = ty::ParamEnv::empty();
                 if self.infcx.at(&cause, param_env).sub(p_ty, c_ty).is_err()
-                    && self.infcx
+                    && self
+                        .infcx
                         .at(&cause, param_env)
                         .sub(p_ty, c_ty_adjusted)
                         .is_err()
@@ -337,7 +338,8 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
                     return false;
                 }
 
-                let old_placeholder = self.match_placeholders
+                let old_placeholder = self
+                    .match_placeholders
                     .placeholders_by_id
                     .insert(node_id, Placeholder::new(PlaceholderContents::Expr(expr)));
                 // Check that we don't already have a value for our placeholder. This shouldn't be
@@ -436,7 +438,8 @@ impl<T: Matchable> Matchable for [T] {
         code: &'gcx Self,
     ) -> bool {
         self.len() == code.len()
-            && self.iter()
+            && self
+                .iter()
                 .zip(code.iter())
                 .all(|(p, c)| p.attempt_match(state, c))
     }
@@ -495,7 +498,8 @@ impl Matchable for hir::Expr {
                 ) && p_args.attempt_match(state, c_args)
             }
             (&ExprBinary(ref p_op, ref p1, ref p2), &ExprBinary(ref c_op, ref c1, ref c2)) => {
-                p_op.attempt_match(state, c_op) && p1.attempt_match(state, c1)
+                p_op.attempt_match(state, c_op)
+                    && p1.attempt_match(state, c1)
                     && p2.attempt_match(state, c2)
             }
             (&ExprUnary(p_op, ref p_expr), &ExprUnary(c_op, ref c_expr)) => {
@@ -521,7 +525,8 @@ impl Matchable for hir::Expr {
                 &ExprLoop(ref p_block, ref p_name, ref p_type),
                 &ExprLoop(ref c_block, ref c_name, ref c_type),
             ) => {
-                p_type == c_type && p_name.attempt_match(state, c_name)
+                p_type == c_type
+                    && p_name.attempt_match(state, c_name)
                     && p_block.attempt_match(state, c_block)
             }
             (&ExprTup(ref p_vec), &ExprTup(ref c_vec))
@@ -533,21 +538,24 @@ impl Matchable for hir::Expr {
                 &ExprIf(ref p_cond, ref p_block, ref p_else),
                 &ExprIf(ref c_cond, ref c_block, ref c_else),
             ) => {
-                p_cond.attempt_match(state, c_cond) && p_block.attempt_match(state, c_block)
+                p_cond.attempt_match(state, c_cond)
+                    && p_block.attempt_match(state, c_block)
                     && p_else.attempt_match(state, c_else)
             }
             (
                 &ExprMatch(ref p_expr, ref p_arms, ref p_source),
                 &ExprMatch(ref c_expr, ref c_arms, ref c_source),
             ) => {
-                p_expr.attempt_match(state, c_expr) && p_source == c_source
+                p_expr.attempt_match(state, c_expr)
+                    && p_source == c_source
                     && p_arms.attempt_match(state, c_arms)
             }
             (
                 &ExprStruct(ref p_path, ref p_fields, ref p_expr),
                 &ExprStruct(ref c_path, ref c_fields, ref c_expr),
             ) => {
-                p_path.attempt_match(state, c_path) && p_fields.attempt_match(state, c_fields)
+                p_path.attempt_match(state, c_path)
+                    && p_fields.attempt_match(state, c_fields)
                     && p_expr.attempt_match(state, c_expr)
             }
             (&ExprBlock(ref p_block, ref p_label), &ExprBlock(ref c_block, ref c_label)) => {
@@ -573,7 +581,8 @@ impl Matchable for hir::Expr {
                 &ExprAssignOp(ref p_op, ref p_lhs, ref p_rhs),
                 &ExprAssignOp(ref c_op, ref c_lhs, ref c_rhs),
             ) => {
-                p_op.attempt_match(state, c_op) && p_lhs.attempt_match(state, c_lhs)
+                p_op.attempt_match(state, c_op)
+                    && p_lhs.attempt_match(state, c_lhs)
                     && p_rhs.attempt_match(state, c_rhs)
             }
             (&ExprBreak(ref p_label, ref p_expr), &ExprBreak(ref c_label, ref c_expr)) => {
@@ -586,14 +595,16 @@ impl Matchable for hir::Expr {
                 &ExprWhile(ref p_expr, ref p_block, ref p_name),
                 &ExprWhile(ref c_expr, ref c_block, ref c_name),
             ) => {
-                p_expr.attempt_match(state, c_expr) && p_block.attempt_match(state, c_block)
+                p_expr.attempt_match(state, c_expr)
+                    && p_block.attempt_match(state, c_block)
                     && p_name.attempt_match(state, c_name)
             }
             (
                 &ExprClosure(p_capture, _, ref p_body_id, _, ref p_gen),
                 &ExprClosure(c_capture, _, ref c_body_id, _, ref c_gen),
             ) => {
-                p_capture == c_capture && p_body_id.attempt_match(state, c_body_id)
+                p_capture == c_capture
+                    && p_body_id.attempt_match(state, c_body_id)
                     && p_gen == c_gen
             }
             (&ExprRet(ref p_expr), &ExprRet(ref c_expr)) => p_expr.attempt_match(state, c_expr),
@@ -763,7 +774,9 @@ impl Matchable for hir::Arm {
         code: &'gcx Self,
     ) -> bool {
         // For now only accept if attrs is empty
-        self.attrs.is_empty() && code.attrs.is_empty() && self.pats.attempt_match(state, &code.pats)
+        self.attrs.is_empty()
+            && code.attrs.is_empty()
+            && self.pats.attempt_match(state, &code.pats)
             && self.guard.attempt_match(state, &code.guard)
             && self.body.attempt_match(state, &code.body)
     }
@@ -811,7 +824,8 @@ impl Matchable for hir::Pat {
                     result
                 }
 
-                p_qpath.attempt_match(state, c_qpath) && p_dotdot == c_dotdot
+                p_qpath.attempt_match(state, c_qpath)
+                    && p_dotdot == c_dotdot
                     && p_pats.len() == c_pats.len()
                     && sorted_by_name(p_pats)
                         .iter()
@@ -822,7 +836,8 @@ impl Matchable for hir::Pat {
                 &TupleStruct(ref p_qpath, ref p_pats, ref p_dd_pos),
                 &TupleStruct(ref c_qpath, ref c_pats, ref c_dd_pos),
             ) => {
-                p_qpath.attempt_match(state, c_qpath) && p_pats.attempt_match(state, c_pats)
+                p_qpath.attempt_match(state, c_qpath)
+                    && p_pats.attempt_match(state, c_pats)
                     && p_dd_pos.attempt_match(state, c_dd_pos)
             }
             (&Box(ref p_pat), &Box(ref c_pat)) => p_pat.attempt_match(state, c_pat),
@@ -836,7 +851,8 @@ impl Matchable for hir::Pat {
                 &Slice(ref p_pats_a, ref p_op_pat, ref p_pats_b),
                 &Slice(ref c_pats_a, ref c_op_pat, ref c_pats_b),
             ) => {
-                p_pats_a.attempt_match(state, c_pats_a) && p_op_pat.attempt_match(state, c_op_pat)
+                p_pats_a.attempt_match(state, c_pats_a)
+                    && p_op_pat.attempt_match(state, c_op_pat)
                     && p_pats_b.attempt_match(state, c_pats_b)
             }
             (&Lit(ref p_expr), &Lit(ref c_expr)) => p_expr.attempt_match(state, c_expr),
@@ -844,7 +860,8 @@ impl Matchable for hir::Pat {
                 &Range(ref p_ex1, ref p_ex2, ref p_incl),
                 &Range(ref c_ex1, ref c_ex2, ref c_incl),
             ) => {
-                p_ex1.attempt_match(state, c_ex1) && p_ex2.attempt_match(state, c_ex2)
+                p_ex1.attempt_match(state, c_ex1)
+                    && p_ex2.attempt_match(state, c_ex2)
                     && p_incl == c_incl
             }
             (&Path(ref p), &Path(ref c)) => p.attempt_match(state, c),
@@ -1022,7 +1039,8 @@ impl Matchable for hir::Local {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.pat.attempt_match(state, &code.pat) && self.ty.attempt_match(state, &code.ty)
+        self.pat.attempt_match(state, &code.pat)
+            && self.ty.attempt_match(state, &code.ty)
             && self.init.attempt_match(state, &code.init)
             && self.attrs.attempt_match(state, &code.attrs)
     }
@@ -1038,7 +1056,8 @@ impl Matchable for hir::Item {
             .match_placeholders
             .matched_variable_decls
             .insert(self.id, code.id);
-        self.attrs.attempt_match(state, &*code.attrs) && self.vis.attempt_match(state, &code.vis)
+        self.attrs.attempt_match(state, &*code.attrs)
+            && self.vis.attempt_match(state, &code.vis)
             && self.node.attempt_match(state, &code.node)
     }
 }
@@ -1055,7 +1074,8 @@ impl Matchable for hir::Item_ {
                 &ItemStatic(ref p_ty, p_mut, ref p_body_id),
                 &ItemStatic(ref c_ty, c_mut, ref c_body_id),
             ) => {
-                p_ty.attempt_match(state, c_ty) && p_mut == c_mut
+                p_ty.attempt_match(state, c_ty)
+                    && p_mut == c_mut
                     && p_body_id.attempt_match(state, c_body_id)
             }
             // TODO: Others
@@ -1451,7 +1471,8 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
     // span with whatever was bound to the placeholder and return true.
     fn process_expr(&mut self, expr: &'gcx hir::Expr, placeholder_span: Span) -> bool {
         if let hir::Expr_::ExprPath(ref path) = expr.node {
-            if let Some(placeholder) = self.current_match
+            if let Some(placeholder) = self
+                .current_match
                 .match_placeholders
                 .get_placeholder(node_id_from_path(path))
             {
@@ -1511,17 +1532,20 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
 
     fn visit_pat(&mut self, pat: &'gcx hir::Pat) {
         if let hir::PatKind::Binding(_, ref node_id, ref name, _) = pat.node {
-            if let Some(search_node_id) = self.current_match
+            if let Some(search_node_id) = self
+                .current_match
                 .rule
                 .declared_name_node_ids
                 .get(&name.node)
             {
-                if let Some(placeholder) = self.current_match
+                if let Some(placeholder) = self
+                    .current_match
                     .match_placeholders
                     .get_placeholder(Some(*search_node_id))
                 {
                     self.process_placeholder(placeholder, pat.span);
-                } else if let Some(code_node_id) = self.current_match
+                } else if let Some(code_node_id) = self
+                    .current_match
                     .match_placeholders
                     .matched_variable_decls
                     .get(search_node_id)

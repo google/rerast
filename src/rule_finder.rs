@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker;
-use syntax::ast::NodeId;
-use syntax::symbol::Symbol;
-use syntax::ext::quote::rt::Span;
-use std::vec::Vec;
-use rustc::hir::{self, intravisit};
-use rustc::ty::{self, TyCtxt};
+use super::DeclaredNamesFinder;
 use definitions::RerastDefinitions;
+use errors::ErrorWithSpan;
 use rule_matcher::{Matchable, OperatorPrecedence};
 use rules::{Rule, Rules};
-use errors::ErrorWithSpan;
-use super::DeclaredNamesFinder;
+use rustc::hir::{self, intravisit};
+use rustc::ty::{self, TyCtxt};
+use std::marker;
+use std::vec::Vec;
+use syntax::ast::NodeId;
+use syntax::ext::quote::rt::Span;
+use syntax::symbol::Symbol;
 
 // Finds rules.
 pub(crate) struct RuleFinder<'a, 'gcx: 'a> {
@@ -76,9 +76,10 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
         } else {
             // TODO: Report proper span. Perhaps report other code - this will only report an
             // unexpected match.
-            Err(vec![
-                ErrorWithSpan::new("Unexpected code found in rule function", arg_ty_span),
-            ])
+            Err(vec![ErrorWithSpan::new(
+                "Unexpected code found in rule function",
+                arg_ty_span,
+            )])
         }
     }
 
@@ -114,7 +115,8 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
         ) {
             let search = T::extract_root(search_block)?;
             let replace = T::extract_root(replace_block)?;
-            let placeholder_ids = self.tcx
+            let placeholder_ids = self
+                .tcx
                 .hir
                 .body(body_id)
                 .arguments
@@ -168,7 +170,8 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
         if let ExprMatch(ref match_expr, ref arms, _) = expr.node {
             if let ExprMethodCall(ref _name, ref _tys, ref args) = match_expr.node {
                 if let Some(body_id) = self.body_id {
-                    let type_tables = self.tcx
+                    let type_tables = self
+                        .tcx
                         .typeck_tables_of(self.tcx.hir.body_owner_def_id(body_id));
                     let arg0 = &args[0];
                     let arg_ty = type_tables.node_id_to_type(self.tcx.hir.node_to_hir_id(arg0.id));

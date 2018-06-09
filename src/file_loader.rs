@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use std::collections::HashMap;
-use syntax::codemap::{FileLoader, RealFileLoader};
-use std::path::{Path, PathBuf};
 use std::io;
+use std::path::{Path, PathBuf};
+use syntax::codemap::{FileLoader, RealFileLoader};
 
 #[derive(Clone)]
 pub(crate) struct InMemoryFileLoader<T: FileLoader + Send + Sync> {

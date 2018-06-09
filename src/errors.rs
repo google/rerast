@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use rustc::ty::TyCtxt;
+use std;
+use std::fmt;
 use std::io;
 use syntax::ext::quote::rt::Span;
-use rustc::ty::TyCtxt;
-use std::fmt;
 use syntax_pos::{FileLinesResult, SpanLinesError};
-use std;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ErrorWithSpan {
@@ -103,12 +103,10 @@ impl RerastErrors {
         RerastErrors(errors)
     }
     pub fn with_message<T: Into<String>>(message: T) -> RerastErrors {
-        RerastErrors(vec![
-            RerastError {
-                message: message.into(),
-                file_lines: None,
-            },
-        ])
+        RerastErrors(vec![RerastError {
+            message: message.into(),
+            file_lines: None,
+        }])
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &RerastError> {

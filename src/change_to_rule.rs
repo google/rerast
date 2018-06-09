@@ -21,24 +21,24 @@ extern crate rustc_driver;
 extern crate syntax;
 extern crate syntax_pos;
 
-use std::fmt::Write;
-use syntax::codemap::{CodeMap, FileLoader, FilePathMapping};
-use syntax::ext::quote::rt::Span;
-use syntax_pos::{BytePos, FileMap, Pos, SyntaxContext};
-use syntax::tokenstream::{TokenStream, TokenTree};
-use syntax::parse::{self, ParseSess};
-use syntax::ast;
-use rustc::ty::{TyCtxt, TypeVariants};
+use errors::RerastErrors;
+use file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
 use rustc::hir::{self, intravisit};
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use rustc::ty::{TyCtxt, TypeVariants};
 use std::cell::RefCell;
-use std::hash::{Hash, Hasher};
 use std::collections::hash_map::{DefaultHasher, HashMap};
 use std::collections::hash_set::HashSet;
+use std::fmt::Write;
+use std::hash::{Hash, Hasher};
 use std::ops::Range;
-use file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
-use errors::RerastErrors;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use syntax::ast;
+use syntax::codemap::{CodeMap, FileLoader, FilePathMapping};
+use syntax::ext::quote::rt::Span;
+use syntax::parse::{self, ParseSess};
+use syntax::tokenstream::{TokenStream, TokenTree};
+use syntax_pos::{BytePos, FileMap, Pos, SyntaxContext};
 use CompilerInvocationInfo;
 
 struct PlaceholderCandidate<T> {
@@ -513,7 +513,8 @@ impl<'a, 'gcx: 'a, 'placeholders> PlaceholderMatcher<'a, 'gcx, 'placeholders> {
                         None,
                     );
                     if stream.eq_unspanned(&other_stream)
-                        && !self.used_placeholder_spans
+                        && !self
+                            .used_placeholder_spans
                             .iter()
                             .any(|s| s.contains(other_span) || other_span.contains(*s))
                     {
@@ -677,12 +678,12 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
         }
     };
     let find_rules_state = Rc::new(RefCell::new(FindRulesState {
-            modified_file_name: modified_file_name.to_owned(),
-            modified_source: right.clone(),
-            changed_span,
-            changed_side_state: None,
-            result: String::new(),
-        }));
+        modified_file_name: modified_file_name.to_owned(),
+        modified_source: right.clone(),
+        changed_span,
+        changed_side_state: None,
+        result: String::new(),
+    }));
 
     let mut args_index = 0;
     loop {
@@ -698,11 +699,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
             .arg("--allow")
             .arg("dead_code");
         invocation_info.run_compiler(compiler_calls, Some(box file_loader.clone()));
-        if find_rules_state
-            .borrow()
-            .changed_side_state
-            .is_none()
-        {
+        if find_rules_state.borrow().changed_side_state.is_none() {
             // Span was not found with these compiler args, try the next command line.
             args_index += 1;
             if args_index >= compiler_invocations.len() {

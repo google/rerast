@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use rule_finder::StartMatch;
+use rustc::hir;
+use std::collections::{HashMap, HashSet};
+use std::vec::Vec;
 use syntax::ast::NodeId;
 use syntax::symbol::Symbol;
-use std::vec::Vec;
-use std::collections::{HashMap, HashSet};
-use rustc::hir;
-use rule_finder::StartMatch;
 
 #[derive(Debug)]
 pub(crate) struct Rule<'gcx, T: StartMatch + 'gcx> {
@@ -56,7 +56,9 @@ impl<'gcx> Rules<'gcx> {
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.expr_rules.len() + self.pattern_rules.len() + self.type_rules.len()
+        self.expr_rules.len()
+            + self.pattern_rules.len()
+            + self.type_rules.len()
             + self.trait_ref_rules.len()
     }
 }

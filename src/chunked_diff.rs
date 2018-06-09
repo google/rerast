@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::VecDeque;
 use colored::Colorize;
 use diff;
+use std::collections::VecDeque;
 use std::fmt;
 use std::ops::Range;
 
