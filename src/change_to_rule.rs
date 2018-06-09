@@ -258,11 +258,11 @@ struct RCompilerCalls {
 
 impl<'a> rustc_driver::CompilerCalls<'a> for RCompilerCalls {
     fn build_controller(
-        &mut self,
+        self: Box<Self>,
         sess: &rustc::session::Session,
         matches: &getopts::Matches,
     ) -> rustc_driver::driver::CompileController<'a> {
-        let mut defaults = rustc_driver::RustcDefaultCalls;
+        let defaults = Box::new(rustc_driver::RustcDefaultCalls);
         let mut control = defaults.build_controller(sess, matches);
         let find_rules_state = Rc::clone(&self.find_rules_state);
         control.after_analysis.callback =
@@ -676,29 +676,29 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
             ))
         }
     };
-    let mut compiler_calls = RCompilerCalls {
-        find_rules_state: Rc::new(RefCell::new(FindRulesState {
+    let find_rules_state = Rc::new(RefCell::new(FindRulesState {
             modified_file_name: modified_file_name.to_owned(),
             modified_source: right.clone(),
             changed_span,
             changed_side_state: None,
             result: String::new(),
-        })),
-    };
+        }));
 
     let mut args_index = 0;
     loop {
         // Run rustc on modified source to find HIR node that encloses changed code as well as
         // subnodes that will be candidates for placeholders.
+        let compiler_calls = Box::new(RCompilerCalls {
+            find_rules_state: find_rules_state.clone(),
+        });
         let invocation_info = compiler_invocations[args_index]
             .clone()
             .arg("--sysroot")
             .arg(::rustup_sysroot())
             .arg("--allow")
             .arg("dead_code");
-        invocation_info.run_compiler(&mut compiler_calls, Some(box file_loader.clone()));
-        if compiler_calls
-            .find_rules_state
+        invocation_info.run_compiler(compiler_calls, Some(box file_loader.clone()));
+        if find_rules_state
             .borrow()
             .changed_side_state
             .is_none()
@@ -712,7 +712,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
             }
             continue;
         }
-        let right_side_changed_span = compiler_calls.find_rules_state.borrow().changed_span;
+        let right_side_changed_span = find_rules_state.borrow().changed_span;
 
         // Run rustc on original source to confirm matching HIR node exists and to match
         // placeholders.
@@ -721,9 +721,12 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
             modified_file_name.to_owned(),
             original_file_contents.to_owned(),
         );
-        invocation_info.run_compiler(&mut compiler_calls, Some(original_file_loader));
+        let compiler_calls = Box::new(RCompilerCalls {
+            find_rules_state: find_rules_state.clone(),
+        });
+        invocation_info.run_compiler(compiler_calls, Some(original_file_loader));
 
-        if right_side_changed_span == compiler_calls.find_rules_state.borrow().changed_span {
+        if right_side_changed_span == find_rules_state.borrow().changed_span {
             // The changed span after examining the right side matched a full expression on the
             // left, so we're done.
             break;
@@ -732,7 +735,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
         // on the left. We need to go back and reprocess the right with the now widened span.
     }
 
-    let rule: String = compiler_calls.find_rules_state.borrow().result.clone();
+    let rule: String = find_rules_state.borrow().result.clone();
     Ok(rule)
 }
 

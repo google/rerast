@@ -163,7 +163,7 @@ impl CompilerInvocationInfo {
 
     pub(crate) fn run_compiler<'a>(
         &self,
-        compiler_calls: &mut (CompilerCalls<'a> + rustc_data_structures::sync::Send),
+        compiler_calls: Box<CompilerCalls<'a> + rustc_data_structures::sync::Send>,
         file_loader: Option<Box<FileLoader + Send + Sync + 'static>>,
     ) {
         for (k, v) in &self.env {
@@ -333,11 +333,11 @@ struct RerastCompilerCalls {
 
 impl<'a> CompilerCalls<'a> for RerastCompilerCalls {
     fn build_controller(
-        &mut self,
+        self: Box<Self>,
         sess: &Session,
         matches: &getopts::Matches,
     ) -> driver::CompileController<'a> {
-        let mut defaults = RustcDefaultCalls;
+        let defaults = Box::new(RustcDefaultCalls);
         let mut control = defaults.build_controller(sess, matches);
         let output = Rc::clone(&self.output);
         let config = self.config.clone();
@@ -448,12 +448,13 @@ fn run_compiler(
     invocation_info: &CompilerInvocationInfo,
     config: Config,
 ) -> Result<RerastOutput, RerastErrors> {
-    let mut compiler_calls = RerastCompilerCalls {
-        output: Rc::new(RefCell::new(Ok(RerastOutput::new()))),
+    let output = Rc::new(RefCell::new(Ok(RerastOutput::new())));
+    let compiler_calls = Box::new(RerastCompilerCalls {
+        output: output.clone(),
         config,
-    };
-    invocation_info.run_compiler(&mut compiler_calls, file_loader);
-    Rc::try_unwrap(compiler_calls.output)
+    });
+    invocation_info.run_compiler(compiler_calls, file_loader);
+    Rc::try_unwrap(output)
         .map_err(|_| {
             RerastErrors::with_message(
                 "Internal error: rustc_driver unexpectedly kept a reference to our data",
