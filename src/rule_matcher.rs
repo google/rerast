@@ -756,7 +756,7 @@ impl Matchable for hir::TraitRef {
     }
 }
 
-impl Matchable for hir::TyParamBound {
+impl Matchable for hir::GenericBound {
     fn attempt_match<'r, 'a, 'gcx, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
@@ -995,7 +995,7 @@ impl Matchable for hir::PathSegment {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.name == code.name && self.parameters.attempt_match(state, &code.parameters)
+        self.name == code.name && self.args.attempt_match(state, &code.args)
     }
 }
 
@@ -1184,16 +1184,35 @@ impl Matchable for hir::Block {
     }
 }
 
-impl Matchable for hir::PathParameters {
+impl Matchable for hir::GenericArgs {
     fn attempt_match<'r, 'a, 'gcx, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
         self.parenthesized == code.parenthesized
-            && self.lifetimes.attempt_match(state, &*code.lifetimes)
-            && self.types.attempt_match(state, &*code.types)
+            && self.args.attempt_match(state, &*code.args)
             && self.bindings.attempt_match(state, &*code.bindings)
+    }
+}
+
+impl Matchable for hir::GenericArg {
+    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+        &self,
+        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
+        code: &'gcx Self,
+    ) -> bool {
+        match (self, code) {
+            (hir::GenericArg::Lifetime(ref p_lifetime),
+             hir::GenericArg::Lifetime(ref c_lifetime)) => {
+                p_lifetime.attempt_match(state, c_lifetime)
+            }
+            (hir::GenericArg::Type(ref p_type),
+             hir::GenericArg::Type(ref c_type)) => {
+                p_type.attempt_match(state, c_type)
+            }
+            _ => false
+        }
     }
 }
 
