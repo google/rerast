@@ -11,6 +11,8 @@ type found in the code for the rule to apply.
 
 ## Installation
 
+Ensuring you have the latest nightly toolchain installed (`rustup update nightly`) simply run:
+
 ```sh
 cargo +nightly install rerast
 ```
