@@ -588,7 +588,7 @@ impl Matchable for hir::Expr {
             (&ExprBreak(ref p_label, ref p_expr), &ExprBreak(ref c_label, ref c_expr)) => {
                 p_label.attempt_match(state, c_label) && p_expr.attempt_match(state, c_expr)
             }
-            (&ExprAgain(ref p_label), &ExprAgain(ref c_label)) => {
+            (&ExprContinue(ref p_label), &ExprContinue(ref c_label)) => {
                 p_label.attempt_match(state, c_label)
             }
             (
@@ -1425,7 +1425,7 @@ fn get_original_spans(search_span: Span, code_span: Span) -> Option<(Span, Span)
         code_span.ctxt().outer().expn_info(),
     ) {
         (Some(search_expn), Some(code_expn)) => {
-            if is_same_expansion(&search_expn.callee, &code_expn.callee) {
+            if is_same_expansion(&search_expn, &code_expn) {
                 get_original_spans(search_expn.call_site, code_expn.call_site)
             } else {
                 None
@@ -1436,10 +1436,10 @@ fn get_original_spans(search_span: Span, code_span: Span) -> Option<(Span, Span)
     }
 }
 
-fn is_same_expansion(a: &codemap::NameAndSpan, b: &codemap::NameAndSpan) -> bool {
+fn is_same_expansion(a: &codemap::ExpnInfo, b: &codemap::ExpnInfo) -> bool {
     use codemap::ExpnFormat::*;
     a.format == b.format && match a.format {
-        MacroBang(_) => a.span == b.span,
+        MacroBang(_) => a.def_site == b.def_site,
         // Not sure what we want to do here
         MacroAttribute(_) => unimplemented!(),
         // For desugaring, we ignore the span since it seems to just duplicate the span of the
