@@ -936,7 +936,7 @@ impl Matchable for hir::Label {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.name.attempt_match(state, &code.name)
+        self.ident.name.attempt_match(state, &code.ident.name)
     }
 }
 
@@ -995,7 +995,7 @@ impl Matchable for hir::PathSegment {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.name == code.name && self.args.attempt_match(state, &code.args)
+        self.ident.name == code.ident.name && self.args.attempt_match(state, &code.args)
     }
 }
 
@@ -1222,7 +1222,7 @@ impl Matchable for hir::TypeBinding {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.name.attempt_match(state, &code.name) && self.ty.attempt_match(state, &code.ty)
+        self.ident.name.attempt_match(state, &code.ident.name) && self.ty.attempt_match(state, &code.ty)
     }
 }
 
@@ -1550,12 +1550,12 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
     }
 
     fn visit_pat(&mut self, pat: &'gcx hir::Pat) {
-        if let hir::PatKind::Binding(_, ref node_id, ref name, _) = pat.node {
+        if let hir::PatKind::Binding(_, ref node_id, ref ident, _) = pat.node {
             if let Some(search_node_id) = self
                 .current_match
                 .rule
                 .declared_name_node_ids
-                .get(&name.node)
+                .get(&ident.name)
             {
                 if let Some(placeholder) = self
                     .current_match
@@ -1577,7 +1577,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
 
                     let code = self.node_id_snippet(*code_node_id);
                     self.result.push(CodeSubstitution {
-                        span: name.span,
+                        span: ident.span,
                         new_code: code,
                         needs_parenthesis: false,
                     });
