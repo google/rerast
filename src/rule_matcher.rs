@@ -1112,8 +1112,8 @@ impl Matchable for hir::Visibility {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use hir::Visibility::*;
-        match (self, code) {
+        use hir::VisibilityKind::*;
+        match (&self.node, &code.node) {
             (
                 Restricted {
                     path: ref p_path, ..
