@@ -1203,15 +1203,14 @@ impl Matchable for hir::GenericArg {
         code: &'gcx Self,
     ) -> bool {
         match (self, code) {
-            (hir::GenericArg::Lifetime(ref p_lifetime),
-             hir::GenericArg::Lifetime(ref c_lifetime)) => {
-                p_lifetime.attempt_match(state, c_lifetime)
-            }
-            (hir::GenericArg::Type(ref p_type),
-             hir::GenericArg::Type(ref c_type)) => {
+            (
+                hir::GenericArg::Lifetime(ref p_lifetime),
+                hir::GenericArg::Lifetime(ref c_lifetime),
+            ) => p_lifetime.attempt_match(state, c_lifetime),
+            (hir::GenericArg::Type(ref p_type), hir::GenericArg::Type(ref c_type)) => {
                 p_type.attempt_match(state, c_type)
             }
-            _ => false
+            _ => false,
         }
     }
 }
@@ -1222,7 +1221,8 @@ impl Matchable for hir::TypeBinding {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.ident.name.attempt_match(state, &code.ident.name) && self.ty.attempt_match(state, &code.ty)
+        self.ident.name.attempt_match(state, &code.ident.name)
+            && self.ty.attempt_match(state, &code.ty)
     }
 }
 
