@@ -512,11 +512,10 @@ impl<'a, 'gcx: 'a, 'placeholders> PlaceholderMatcher<'a, 'gcx, 'placeholders> {
                         &session,
                         None,
                     );
-                    if stream.eq_unspanned(&other_stream)
-                        && !self
-                            .used_placeholder_spans
-                            .iter()
-                            .any(|s| s.contains(other_span) || other_span.contains(*s))
+                    if stream.eq_unspanned(&other_stream) && !self
+                        .used_placeholder_spans
+                        .iter()
+                        .any(|s| s.contains(other_span) || other_span.contains(*s))
                     {
                         self.used_placeholder_spans.push(other_span);
                         placeholder.uses.push(other_span);

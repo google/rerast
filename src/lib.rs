@@ -616,7 +616,9 @@ mod tests {
                #![feature(box_patterns)]
                #![feature(slice_patterns)]
                #![feature(exclusive_range_pattern)]
-               "#.to_owned() + header1 + "#[macro_use]\nmod common;\n"
+               "#.to_owned()
+            + header1
+            + "#[macro_use]\nmod common;\n"
             + header2;
         let rule_header = header1.to_owned() + "use common;\n" + header2;
         file_loader.add_file(CODE_FILE_NAME.to_owned(), code_header.clone() + code);
@@ -2022,7 +2024,8 @@ mod tests {
             extern crate foo;
 
 
-            // bar"#.to_owned() + "\n"
+            // bar"#.to_owned()
+                + "\n"
         );
     }
 }

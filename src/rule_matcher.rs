@@ -327,12 +327,11 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
                 let c_ty_adjusted = self.code_type_tables().expr_ty_adjusted(expr);
                 let cause = ObligationCause::dummy();
                 let param_env = ty::ParamEnv::empty();
-                if self.infcx.at(&cause, param_env).sub(p_ty, c_ty).is_err()
-                    && self
-                        .infcx
-                        .at(&cause, param_env)
-                        .sub(p_ty, c_ty_adjusted)
-                        .is_err()
+                if self.infcx.at(&cause, param_env).sub(p_ty, c_ty).is_err() && self
+                    .infcx
+                    .at(&cause, param_env)
+                    .sub(p_ty, c_ty_adjusted)
+                    .is_err()
                 {
                     debug!(self, "Types didn't match");
                     return false;
@@ -374,7 +373,8 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
         {
             return method_type_tables.type_dependent_defs()
                 [self.tcx.hir.node_to_hir_id(method_call_id)]
-                .def_id() == method_id;
+                .def_id()
+                == method_id;
         }
         false
     }
@@ -437,11 +437,10 @@ impl<T: Matchable> Matchable for [T] {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.len() == code.len()
-            && self
-                .iter()
-                .zip(code.iter())
-                .all(|(p, c)| p.attempt_match(state, c))
+        self.len() == code.len() && self
+            .iter()
+            .zip(code.iter())
+            .all(|(p, c)| p.attempt_match(state, c))
     }
 }
 
@@ -562,11 +561,10 @@ impl Matchable for hir::Expr {
                 p_block.attempt_match(state, c_block) && p_label.attempt_match(state, c_label)
             }
             (&ExprCast(ref p_expr, ref _p_ty), &ExprCast(ref c_expr, ref _c_ty)) => {
-                p_expr.attempt_match(state, c_expr)
-                    && state.can_sub(
-                        state.rule_type_tables.expr_ty(self),
-                        state.code_type_tables().expr_ty(code),
-                    )
+                p_expr.attempt_match(state, c_expr) && state.can_sub(
+                    state.rule_type_tables.expr_ty(self),
+                    state.code_type_tables().expr_ty(code),
+                )
             }
             (&ExprIndex(ref p_expr, ref p_index), &ExprIndex(ref c_expr, ref c_index)) => {
                 p_expr.attempt_match(state, c_expr) && p_index.attempt_match(state, c_index)
@@ -982,7 +980,8 @@ impl Matchable for hir::Path {
                 state
                     .match_placeholders
                     .matched_variable_decls
-                    .get(&p_def_id) == Some(&c_def_id)
+                    .get(&p_def_id)
+                    == Some(&c_def_id)
             }
             _ => self.def == code.def,
         }
