@@ -598,10 +598,10 @@ impl Matchable for hir::Expr {
                     && p_name.attempt_match(state, c_name)
             }
             (
-                &ExprClosure(p_capture, _, ref p_body_id, _, ref p_gen),
-                &ExprClosure(c_capture, _, ref c_body_id, _, ref c_gen),
+                &ExprClosure(ref p_capture, _, ref p_body_id, _, ref p_gen),
+                &ExprClosure(ref c_capture, _, ref c_body_id, _, ref c_gen),
             ) => {
-                p_capture == c_capture
+                p_capture.attempt_match(state, c_capture)
                     && p_body_id.attempt_match(state, c_body_id)
                     && p_gen == c_gen
             }
@@ -741,6 +741,34 @@ impl Matchable for hir::PolyTraitRef {
         code: &'gcx Self,
     ) -> bool {
         self.trait_ref.attempt_match(state, &code.trait_ref)
+    }
+}
+
+impl Matchable for hir::CaptureClause {
+    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+        &self,
+        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
+        code: &'gcx Self,
+    ) -> bool {
+        match (self, code) {
+            (hir::CaptureClause::CaptureByValue, hir::CaptureClause::CaptureByValue)
+            | (hir::CaptureClause::CaptureByRef, hir::CaptureClause::CaptureByRef) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Matchable for ast::CrateSugar {
+    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+        &self,
+        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
+        code: &'gcx Self,
+    ) -> bool {
+        match (self, code) {
+            (ast::CrateSugar::PubCrate, ast::CrateSugar::PubCrate)
+            | (ast::CrateSugar::JustCrate, ast::CrateSugar::JustCrate) => true,
+            _ => false,
+        }
     }
 }
 
@@ -1121,7 +1149,7 @@ impl Matchable for hir::Visibility {
                     path: ref c_path, ..
                 },
             ) => p_path.attempt_match(state, c_path),
-            (Crate(p_sugar), Crate(c_sugar)) => p_sugar == c_sugar,
+            (Crate(ref p_sugar), Crate(ref c_sugar)) => p_sugar.attempt_match(state, c_sugar),
             (Public, Public) | (Inherited, Inherited) => true,
             _ => false,
         }
@@ -1307,7 +1335,7 @@ impl<'r, 'a, 'gcx, 'tcx> MatchPlaceholders<'r, 'gcx> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum PlaceholderContents<'gcx> {
     Expr(&'gcx hir::Expr),
     Statements(&'gcx [hir::Stmt]),
