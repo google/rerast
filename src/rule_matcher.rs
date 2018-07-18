@@ -223,7 +223,7 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
     }
 
     fn visit_item(&mut self, item: &'gcx hir::Item) {
-        if let hir::Item_::ItemMod(_) = item.node {
+        if let hir::ItemKind::Mod(_) = item.node {
             // Avoid trying to find matches in the rules file.
             if item.name == self.rule_mod_symbol {
                 return;
@@ -244,7 +244,7 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
         let old_body_id = self.body_id;
         self.body_id = Some(body.id());
         match body.value.node {
-            hir::Expr_::ExprBlock(_, _) => {
+            hir::ExprKind::Block(_, _) => {
                 // We want to ensure that visit_expr is not called for the root expression of our
                 // body (the block), since we don't want to replace it. But we still want to visit
                 // the body arguments, so we do so explicitly.
@@ -382,13 +382,13 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     // Checks if the supplied statement is a placeholder for a sequence of statements. e.g. `a();`
     // where `a` is of type rerast::Statements. If it is, returns the NodeId of the placeholder.
     fn opt_statements_placeholder_node_id(&self, stmt: &hir::Stmt) -> Option<NodeId> {
-        if let hir::Stmt_::StmtSemi(ref expr, _) = stmt.node {
-            if let hir::Expr_::ExprCall(ref function, _) = expr.node {
+        if let hir::StmtKind::Semi(ref expr, _) = stmt.node {
+            if let hir::ExprKind::Call(ref function, _) = expr.node {
                 let fn_ty = self.rule_type_tables.expr_ty(function);
                 if !self.can_sub(fn_ty, self.rerast_definitions.statements) {
                     return None;
                 }
-                if let hir::Expr_::ExprPath(ref path) = function.node {
+                if let hir::ExprKind::Path(ref path) = function.node {
                     if let Some(node_id) = node_id_from_path(path) {
                         if self.placeholder_ids.contains(&node_id) {
                             return Some(node_id);
@@ -470,17 +470,17 @@ impl Matchable for hir::Expr {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use rustc::hir::Expr_::*;
+        use rustc::hir::ExprKind;
         let result = match (&self.node, &code.node) {
             // TODO: ExprType, ExprInlineAsm (or more likely report that we don't support it).
-            (&ExprCall(ref p_fn, ref p_args), &ExprCall(ref c_fn, ref c_args)) => {
+            (&ExprKind::Call(ref p_fn, ref p_args), &ExprKind::Call(ref c_fn, ref c_args)) => {
                 p_fn.attempt_match(state, c_fn) && p_args.attempt_match(state, c_args)
             }
             (
-                &ExprMethodCall(ref p_name, _, ref p_args),
-                &ExprMethodCall(ref c_name, _, ref c_args),
+                &ExprKind::MethodCall(ref p_name, _, ref p_args),
+                &ExprKind::MethodCall(ref c_name, _, ref c_args),
             ) => p_name.attempt_match(state, c_name) && p_args.attempt_match(state, c_args),
-            (&ExprMethodCall(_, _, ref p_args), &ExprCall(ref c_fn, ref c_args)) => {
+            (&ExprKind::MethodCall(_, _, ref p_args), &ExprKind::Call(ref c_fn, ref c_args)) => {
                 state.fn_expr_equals_method_call(
                     c_fn,
                     state.code_type_tables(),
@@ -488,7 +488,7 @@ impl Matchable for hir::Expr {
                     state.rule_type_tables,
                 ) && p_args.attempt_match(state, c_args)
             }
-            (&ExprCall(ref p_fn, ref p_args), &ExprMethodCall(_, _, ref c_args)) => {
+            (&ExprKind::Call(ref p_fn, ref p_args), &ExprKind::MethodCall(_, _, ref c_args)) => {
                 state.fn_expr_equals_method_call(
                     p_fn,
                     state.rule_type_tables,
@@ -496,18 +496,21 @@ impl Matchable for hir::Expr {
                     state.code_type_tables(),
                 ) && p_args.attempt_match(state, c_args)
             }
-            (&ExprBinary(ref p_op, ref p1, ref p2), &ExprBinary(ref c_op, ref c1, ref c2)) => {
+            (
+                &ExprKind::Binary(ref p_op, ref p1, ref p2),
+                &ExprKind::Binary(ref c_op, ref c1, ref c2),
+            ) => {
                 p_op.attempt_match(state, c_op)
                     && p1.attempt_match(state, c1)
                     && p2.attempt_match(state, c2)
             }
-            (&ExprUnary(p_op, ref p_expr), &ExprUnary(c_op, ref c_expr)) => {
+            (&ExprKind::Unary(p_op, ref p_expr), &ExprKind::Unary(c_op, ref c_expr)) => {
                 p_op == c_op && p_expr.attempt_match(state, c_expr)
             }
-            (&ExprAddrOf(p_mut, ref p_expr), &ExprAddrOf(c_mut, ref c_expr)) => {
+            (&ExprKind::AddrOf(p_mut, ref p_expr), &ExprKind::AddrOf(c_mut, ref c_expr)) => {
                 p_mut == c_mut && p_expr.attempt_match(state, c_expr)
             }
-            (&ExprLit(ref p_lit), &ExprLit(ref c_lit)) => {
+            (&ExprKind::Lit(ref p_lit), &ExprKind::Lit(ref c_lit)) => {
                 p_lit.node == c_lit.node || {
                     if let Some((p_span, c_span)) = get_original_spans(self.span, code.span) {
                         // It's a bit unfortunate, but it seems that macros like file! and line!
@@ -521,93 +524,104 @@ impl Matchable for hir::Expr {
                 }
             }
             (
-                &ExprLoop(ref p_block, ref p_name, ref p_type),
-                &ExprLoop(ref c_block, ref c_name, ref c_type),
+                &ExprKind::Loop(ref p_block, ref p_name, ref p_type),
+                &ExprKind::Loop(ref c_block, ref c_name, ref c_type),
             ) => {
                 p_type == c_type
                     && p_name.attempt_match(state, c_name)
                     && p_block.attempt_match(state, c_block)
             }
-            (&ExprTup(ref p_vec), &ExprTup(ref c_vec))
-            | (&ExprArray(ref p_vec), &ExprArray(ref c_vec)) => p_vec.attempt_match(state, c_vec),
-            (&ExprRepeat(ref p_expr, ref p_const), &ExprRepeat(ref c_expr, ref c_const)) => {
-                p_expr.attempt_match(state, c_expr) && p_const.attempt_match(state, c_const)
+            (&ExprKind::Tup(ref p_vec), &ExprKind::Tup(ref c_vec))
+            | (&ExprKind::Array(ref p_vec), &ExprKind::Array(ref c_vec)) => {
+                p_vec.attempt_match(state, c_vec)
             }
             (
-                &ExprIf(ref p_cond, ref p_block, ref p_else),
-                &ExprIf(ref c_cond, ref c_block, ref c_else),
+                &ExprKind::Repeat(ref p_expr, ref p_const),
+                &ExprKind::Repeat(ref c_expr, ref c_const),
+            ) => p_expr.attempt_match(state, c_expr) && p_const.attempt_match(state, c_const),
+            (
+                &ExprKind::If(ref p_cond, ref p_block, ref p_else),
+                &ExprKind::If(ref c_cond, ref c_block, ref c_else),
             ) => {
                 p_cond.attempt_match(state, c_cond)
                     && p_block.attempt_match(state, c_block)
                     && p_else.attempt_match(state, c_else)
             }
             (
-                &ExprMatch(ref p_expr, ref p_arms, ref p_source),
-                &ExprMatch(ref c_expr, ref c_arms, ref c_source),
+                &ExprKind::Match(ref p_expr, ref p_arms, ref p_source),
+                &ExprKind::Match(ref c_expr, ref c_arms, ref c_source),
             ) => {
                 p_expr.attempt_match(state, c_expr)
                     && p_source == c_source
                     && p_arms.attempt_match(state, c_arms)
             }
             (
-                &ExprStruct(ref p_path, ref p_fields, ref p_expr),
-                &ExprStruct(ref c_path, ref c_fields, ref c_expr),
+                &ExprKind::Struct(ref p_path, ref p_fields, ref p_expr),
+                &ExprKind::Struct(ref c_path, ref c_fields, ref c_expr),
             ) => {
                 p_path.attempt_match(state, c_path)
                     && p_fields.attempt_match(state, c_fields)
                     && p_expr.attempt_match(state, c_expr)
             }
-            (&ExprBlock(ref p_block, ref p_label), &ExprBlock(ref c_block, ref c_label)) => {
-                p_block.attempt_match(state, c_block) && p_label.attempt_match(state, c_label)
-            }
-            (&ExprCast(ref p_expr, ref _p_ty), &ExprCast(ref c_expr, ref _c_ty)) => {
+            (
+                &ExprKind::Block(ref p_block, ref p_label),
+                &ExprKind::Block(ref c_block, ref c_label),
+            ) => p_block.attempt_match(state, c_block) && p_label.attempt_match(state, c_label),
+            (&ExprKind::Cast(ref p_expr, ref _p_ty), &ExprKind::Cast(ref c_expr, ref _c_ty)) => {
                 p_expr.attempt_match(state, c_expr) && state.can_sub(
                     state.rule_type_tables.expr_ty(self),
                     state.code_type_tables().expr_ty(code),
                 )
             }
-            (&ExprIndex(ref p_expr, ref p_index), &ExprIndex(ref c_expr, ref c_index)) => {
-                p_expr.attempt_match(state, c_expr) && p_index.attempt_match(state, c_index)
-            }
-            (&ExprField(ref p_expr, ref p_name), &ExprField(ref c_expr, ref c_name)) => {
-                p_expr.attempt_match(state, c_expr) && p_name.attempt_match(state, c_name)
-            }
-            (&ExprAssign(ref p_lhs, ref p_rhs), &ExprAssign(ref c_lhs, ref c_rhs)) => {
+            (
+                &ExprKind::Index(ref p_expr, ref p_index),
+                &ExprKind::Index(ref c_expr, ref c_index),
+            ) => p_expr.attempt_match(state, c_expr) && p_index.attempt_match(state, c_index),
+            (
+                &ExprKind::Field(ref p_expr, ref p_name),
+                &ExprKind::Field(ref c_expr, ref c_name),
+            ) => p_expr.attempt_match(state, c_expr) && p_name.attempt_match(state, c_name),
+            (&ExprKind::Assign(ref p_lhs, ref p_rhs), &ExprKind::Assign(ref c_lhs, ref c_rhs)) => {
                 p_lhs.attempt_match(state, c_lhs) && p_rhs.attempt_match(state, c_rhs)
             }
             (
-                &ExprAssignOp(ref p_op, ref p_lhs, ref p_rhs),
-                &ExprAssignOp(ref c_op, ref c_lhs, ref c_rhs),
+                &ExprKind::AssignOp(ref p_op, ref p_lhs, ref p_rhs),
+                &ExprKind::AssignOp(ref c_op, ref c_lhs, ref c_rhs),
             ) => {
                 p_op.attempt_match(state, c_op)
                     && p_lhs.attempt_match(state, c_lhs)
                     && p_rhs.attempt_match(state, c_rhs)
             }
-            (&ExprBreak(ref p_label, ref p_expr), &ExprBreak(ref c_label, ref c_expr)) => {
-                p_label.attempt_match(state, c_label) && p_expr.attempt_match(state, c_expr)
-            }
-            (&ExprContinue(ref p_label), &ExprContinue(ref c_label)) => {
+            (
+                &ExprKind::Break(ref p_label, ref p_expr),
+                &ExprKind::Break(ref c_label, ref c_expr),
+            ) => p_label.attempt_match(state, c_label) && p_expr.attempt_match(state, c_expr),
+            (&ExprKind::Continue(ref p_label), &ExprKind::Continue(ref c_label)) => {
                 p_label.attempt_match(state, c_label)
             }
             (
-                &ExprWhile(ref p_expr, ref p_block, ref p_name),
-                &ExprWhile(ref c_expr, ref c_block, ref c_name),
+                &ExprKind::While(ref p_expr, ref p_block, ref p_name),
+                &ExprKind::While(ref c_expr, ref c_block, ref c_name),
             ) => {
                 p_expr.attempt_match(state, c_expr)
                     && p_block.attempt_match(state, c_block)
                     && p_name.attempt_match(state, c_name)
             }
             (
-                &ExprClosure(ref p_capture, _, ref p_body_id, _, ref p_gen),
-                &ExprClosure(ref c_capture, _, ref c_body_id, _, ref c_gen),
+                &ExprKind::Closure(ref p_capture, _, ref p_body_id, _, ref p_gen),
+                &ExprKind::Closure(ref c_capture, _, ref c_body_id, _, ref c_gen),
             ) => {
                 p_capture.attempt_match(state, c_capture)
                     && p_body_id.attempt_match(state, c_body_id)
                     && p_gen == c_gen
             }
-            (&ExprRet(ref p_expr), &ExprRet(ref c_expr)) => p_expr.attempt_match(state, c_expr),
-            (&ExprBox(ref p_expr), &ExprBox(ref c_expr)) => p_expr.attempt_match(state, c_expr),
-            (&ExprPath(ref p_path), &ExprPath(ref c_path)) => {
+            (&ExprKind::Ret(ref p_expr), &ExprKind::Ret(ref c_expr)) => {
+                p_expr.attempt_match(state, c_expr)
+            }
+            (&ExprKind::Box(ref p_expr), &ExprKind::Box(ref c_expr)) => {
+                p_expr.attempt_match(state, c_expr)
+            }
+            (&ExprKind::Path(ref p_path), &ExprKind::Path(ref c_path)) => {
                 // First check if the pattern is a placeholder and bind it if it is, otherwise try a
                 // literal matching.
                 if state.attempt_to_bind_expr(p_path, code) {
@@ -617,7 +631,7 @@ impl Matchable for hir::Expr {
                 }
                 p_path.attempt_match(state, c_path)
             }
-            (&ExprPath(ref path), _) => {
+            (&ExprKind::Path(ref path), _) => {
                 // We've got a path and something that isn't a path (since we failed the previous
                 // match arm). Check if the path is a placeholder and if it is, attempt to bind it
                 // to our code.
@@ -671,31 +685,31 @@ impl Matchable for hir::Ty {
     }
 }
 
-impl Matchable for hir::Ty_ {
+impl Matchable for hir::TyKind {
     fn attempt_match<'r, 'a, 'gcx, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use hir::Ty_::*;
+        use hir::TyKind;
         match (self, code) {
-            (&TySlice(ref p), &TySlice(ref c)) | (&TyArray(ref p, _), &TyArray(ref c, _)) => {
-                p.attempt_match(state, c)
-            }
-            (&TyPtr(ref p), &TyPtr(ref c)) => p.attempt_match(state, c),
-            (&TyRptr(ref p_lifetime, ref p_ty), &TyRptr(ref c_lifetime, ref c_ty)) => {
+            (&TyKind::Slice(ref p), &TyKind::Slice(ref c))
+            | (&TyKind::Array(ref p, _), &TyKind::Array(ref c, _)) => p.attempt_match(state, c),
+            (&TyKind::Ptr(ref p), &TyKind::Ptr(ref c)) => p.attempt_match(state, c),
+            (&TyKind::Rptr(ref p_lifetime, ref p_ty), &TyKind::Rptr(ref c_lifetime, ref c_ty)) => {
                 p_lifetime.attempt_match(state, c_lifetime) && p_ty.attempt_match(state, c_ty)
             }
-            (&TyBareFn(ref p), &TyBareFn(ref c)) => p.attempt_match(state, c),
-            (&TyNever, &TyNever) => true,
-            (&TyTup(ref p), &TyTup(ref c)) => p.attempt_match(state, c),
-            (&TyPath(ref p), &TyPath(ref c)) => p.attempt_match(state, c),
-            (&TyTraitObject(ref p, ref p_lifetime), &TyTraitObject(ref c, ref c_lifetime)) => {
-                p.attempt_match(state, c) && p_lifetime.attempt_match(state, c_lifetime)
-            }
-            // TODO: TyImplTraitExistential
-            // TODO: TyImplTraitUniversal
-            // TODO: TyTypeOf
+            (&TyKind::BareFn(ref p), &TyKind::BareFn(ref c)) => p.attempt_match(state, c),
+            (&TyKind::Never, &TyKind::Never) => true,
+            (&TyKind::Tup(ref p), &TyKind::Tup(ref c)) => p.attempt_match(state, c),
+            (&TyKind::Path(ref p), &TyKind::Path(ref c)) => p.attempt_match(state, c),
+            (
+                &TyKind::TraitObject(ref p, ref p_lifetime),
+                &TyKind::TraitObject(ref c, ref c_lifetime),
+            ) => p.attempt_match(state, c) && p_lifetime.attempt_match(state, c_lifetime),
+            // TODO: TyKind::ImplTraitExistential
+            // TODO: TyKind::ImplTraitUniversal
+            // TODO: TyKind::TyKind::peOf
             _ => false,
         }
     }
@@ -1032,26 +1046,26 @@ impl Matchable for hir::Stmt {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use rustc::hir::Stmt_::*;
+        use rustc::hir::StmtKind;
         match (&self.node, &code.node) {
-            (&StmtExpr(ref p, _), &StmtExpr(ref c, _))
-            | (&StmtSemi(ref p, _), &StmtSemi(ref c, _)) => p.attempt_match(state, c),
-            (&StmtDecl(ref p, _), &StmtDecl(ref c, _)) => p.attempt_match(state, c),
+            (&StmtKind::Expr(ref p, _), &StmtKind::Expr(ref c, _))
+            | (&StmtKind::Semi(ref p, _), &StmtKind::Semi(ref c, _)) => p.attempt_match(state, c),
+            (&StmtKind::Decl(ref p, _), &StmtKind::Decl(ref c, _)) => p.attempt_match(state, c),
             _ => false,
         }
     }
 }
 
-impl Matchable for hir::Decl_ {
+impl Matchable for hir::DeclKind {
     fn attempt_match<'r, 'a, 'gcx, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use hir::Decl_::*;
+        use hir::DeclKind;
         match (self, code) {
-            (&DeclLocal(ref p), &DeclLocal(ref c)) => p.attempt_match(state, c),
-            (&DeclItem(ref p), &DeclItem(ref c)) => {
+            (&DeclKind::Local(ref p), &DeclKind::Local(ref c)) => p.attempt_match(state, c),
+            (&DeclKind::Item(ref p), &DeclKind::Item(ref c)) => {
                 let krate = state.tcx.hir.krate();
                 krate.item(p.id).attempt_match(state, krate.item(c.id))
             }
@@ -1089,17 +1103,17 @@ impl Matchable for hir::Item {
     }
 }
 
-impl Matchable for hir::Item_ {
+impl Matchable for hir::ItemKind {
     fn attempt_match<'r, 'a, 'gcx, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use hir::Item_::*;
+        use hir::ItemKind;
         match (self, code) {
             (
-                &ItemStatic(ref p_ty, p_mut, ref p_body_id),
-                &ItemStatic(ref c_ty, c_mut, ref c_body_id),
+                &ItemKind::Static(ref p_ty, p_mut, ref p_body_id),
+                &ItemKind::Static(ref c_ty, c_mut, ref c_body_id),
             ) => {
                 p_ty.attempt_match(state, c_ty)
                     && p_mut == c_mut
@@ -1403,24 +1417,31 @@ pub(crate) enum OperatorPrecedence {
 
 impl OperatorPrecedence {
     fn from_expr(expr: &hir::Expr) -> Option<OperatorPrecedence> {
-        use rustc::hir::Expr_::*;
+        use rustc::hir::ExprKind;
         Some(match expr.node {
-            ExprUnary(..) => OperatorPrecedence::Unary,
-            ExprBinary(op, ..) => {
-                use rustc::hir::BinOp_::*;
+            ExprKind::Unary(..) => OperatorPrecedence::Unary,
+            ExprKind::Binary(op, ..) => {
+                use rustc::hir::BinOpKind;
                 match op.node {
-                    BiAdd | BiSub => OperatorPrecedence::AddSub,
-                    BiMul | BiDiv | BiRem => OperatorPrecedence::MulDivMod,
-                    BiAnd => OperatorPrecedence::LogicalAnd,
-                    BiOr => OperatorPrecedence::LogicalOr,
-                    BiBitXor => OperatorPrecedence::BitXor,
-                    BiBitAnd => OperatorPrecedence::BitAnd,
-                    BiBitOr => OperatorPrecedence::BitOr,
-                    BiShl | BiShr => OperatorPrecedence::BitShift,
-                    BiEq | BiLt | BiLe | BiNe | BiGe | BiGt => OperatorPrecedence::Comparison,
+                    BinOpKind::Add | BinOpKind::Sub => OperatorPrecedence::AddSub,
+                    BinOpKind::Mul | BinOpKind::Div | BinOpKind::Rem => {
+                        OperatorPrecedence::MulDivMod
+                    }
+                    BinOpKind::And => OperatorPrecedence::LogicalAnd,
+                    BinOpKind::Or => OperatorPrecedence::LogicalOr,
+                    BinOpKind::BitXor => OperatorPrecedence::BitXor,
+                    BinOpKind::BitAnd => OperatorPrecedence::BitAnd,
+                    BinOpKind::BitOr => OperatorPrecedence::BitOr,
+                    BinOpKind::Shl | BinOpKind::Shr => OperatorPrecedence::BitShift,
+                    BinOpKind::Eq
+                    | BinOpKind::Lt
+                    | BinOpKind::Le
+                    | BinOpKind::Ne
+                    | BinOpKind::Ge
+                    | BinOpKind::Gt => OperatorPrecedence::Comparison,
                 }
             }
-            ExprAssign(..) => OperatorPrecedence::Assignment,
+            ExprKind::Assign(..) => OperatorPrecedence::Assignment,
             _ => return None,
         })
     }
@@ -1516,7 +1537,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
     // Check if the supplied expression is a placeholder variable. If it is, replace the supplied
     // span with whatever was bound to the placeholder and return true.
     fn process_expr(&mut self, expr: &'gcx hir::Expr, placeholder_span: Span) -> bool {
-        if let hir::Expr_::ExprPath(ref path) = expr.node {
+        if let hir::ExprKind::Path(ref path) = expr.node {
             if let Some(placeholder) = self
                 .current_match
                 .match_placeholders
@@ -1566,8 +1587,8 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
     }
 
     fn visit_stmt(&mut self, stmt: &'gcx hir::Stmt) {
-        if let hir::Stmt_::StmtSemi(ref expr, _) = stmt.node {
-            if let hir::Expr_::ExprCall(ref expr_fn, _) = expr.node {
+        if let hir::StmtKind::Semi(ref expr, _) = stmt.node {
+            if let hir::ExprKind::Call(ref expr_fn, _) = expr.node {
                 if self.process_expr(expr_fn, stmt.span) {
                     return;
                 }

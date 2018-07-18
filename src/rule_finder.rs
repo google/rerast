@@ -95,7 +95,7 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
                 if let hir::PatKind::Path(hir::QPath::Resolved(None, ref path)) = arm.pats[0].node {
                     if let Some(segment) = path.segments.last() {
                         if segment.ident.name == arm_name {
-                            if let hir::Expr_::ExprBlock(ref block, _) = arm.body.node {
+                            if let hir::ExprKind::Block(ref block, _) = arm.body.node {
                                 return Some(block);
                             }
                         }
@@ -147,8 +147,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
     }
 
     fn visit_item(&mut self, item: &'gcx hir::Item) {
-        use hir::Item_::*;
-        if let ItemMod(_) = item.node {
+        if let hir::ItemKind::Mod(_) = item.node {
             if item.name == self.rules_mod_symbol {
                 self.in_rules_module = true;
                 intravisit::walk_item(self, item);
@@ -166,9 +165,9 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
         if !self.in_rules_module {
             return;
         }
-        use hir::Expr_::*;
-        if let ExprMatch(ref match_expr, ref arms, _) = expr.node {
-            if let ExprMethodCall(ref _name, ref _tys, ref args) = match_expr.node {
+        use hir::ExprKind;
+        if let ExprKind::Match(ref match_expr, ref arms, _) = expr.node {
+            if let ExprKind::MethodCall(ref _name, ref _tys, ref args) = match_expr.node {
                 if let Some(body_id) = self.body_id {
                     let type_tables = self
                         .tcx
@@ -231,8 +230,8 @@ impl StartMatch for hir::Expr {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::Stmt_::StmtSemi(ref addr_expr, _) = block.stmts[0].node {
-                if let hir::Expr_::ExprAddrOf(_, ref expr) = addr_expr.node {
+            if let hir::StmtKind::Semi(ref addr_expr, _) = block.stmts[0].node {
+                if let hir::ExprKind::AddrOf(_, ref expr) = addr_expr.node {
                     return Ok(&**expr);
                 }
             }
@@ -262,10 +261,10 @@ impl StartMatch for hir::Ty {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::Stmt_::StmtDecl(ref decl, _) = block.stmts[0].node {
-                if let hir::Decl_::DeclLocal(ref local) = decl.node {
+            if let hir::StmtKind::Decl(ref decl, _) = block.stmts[0].node {
+                if let hir::DeclKind::Local(ref local) = decl.node {
                     if let Some(ref ref_ty) = local.ty {
-                        if let hir::Ty_::TyRptr(_, ref mut_ty) = ref_ty.node {
+                        if let hir::TyKind::Rptr(_, ref mut_ty) = ref_ty.node {
                             return Ok(&*mut_ty.ty);
                         }
                     }
@@ -297,7 +296,7 @@ impl StartMatch for hir::TraitRef {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         let ty = <hir::Ty as StartMatch>::extract_root(block)?;
-        if let hir::Ty_::TyTraitObject(ref bounds, _) = ty.node {
+        if let hir::TyKind::TraitObject(ref bounds, _) = ty.node {
             if bounds.len() == 1 {
                 return Ok(&bounds[0].trait_ref);
             } else {
@@ -333,8 +332,8 @@ impl StartMatch for hir::Pat {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::Stmt_::StmtSemi(ref expr, _) = block.stmts[0].node {
-                if let hir::Expr_::ExprMatch(_, ref arms, _) = expr.node {
+            if let hir::StmtKind::Semi(ref expr, _) = block.stmts[0].node {
+                if let hir::ExprKind::Match(_, ref arms, _) = expr.node {
                     // The user's pattern is wrapped in Some(x) in order to make all patterns
                     // refutable. Otherwise we'd need the user to use a different macro for
                     // refutable and irrefutable patterns which wouldn't be very ergonomic.
