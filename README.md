@@ -43,6 +43,12 @@ If you'd like to actually update your files, that can be done as follows:
 cargo +nightly rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --force --backup
 ```
 
+You can control which compilation roots rerast will inject the rule into using the `--file` argument, e.g.:
+
+```sh
+cargo +nightly rerast --rules_file=my_rules.rs --targets tests --file tests/testsuite/main.rs --diff
+```
+
 Here's a more complex example
 
 ```rust
@@ -133,9 +139,6 @@ you could copy the printed rule into a .rs file and apply it with --rules_file.
   rule is applied. This should eventually be fixed, there just wasn't time before release and it's
   kind of tricky.
 * Your code must be able to compile for this to work.
-* Rules cannot yet refer to types, functions, etc that are private to submodules. Eventually we'll
-  allow you to specify the file into which the rules should be injected which will allow them to
-  reference anything in that module.
 * Code within rustdoc is not yet processed and matched.
 * Conditional code that disabled with a cfg attribute isn't matched. It's suggested to enable all
   features if possible when running so that as much code can be checked as possible.
