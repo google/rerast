@@ -67,8 +67,9 @@ enable/disable rules by specifying their name, so it's probably a good idea to p
 descriptive name here. Similarly, comments placed before the function may in the future be displayed
 to users when the rule matches. This is not yet implemented.
 
-A function can contain multiple invocations of the replace! macro. This is useful if you want
-to do several replacements that make use of the same placeholders.
+A function can contain multiple invocations of the replace! macro, with earlier rules taking precedence.
+This is useful if you want to do several replacements that make use of the same placeholders or if you want
+to handle certain special patterns first, ahead of a more general match.
 
 Besides replace! there are several other replacement macros that can be used:
 
