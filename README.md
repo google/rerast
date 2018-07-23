@@ -139,6 +139,9 @@ you could copy the printed rule into a .rs file and apply it with --rules_file.
   rule is applied. This should eventually be fixed, there just wasn't time before release and it's
   kind of tricky.
 * Your code must be able to compile for this to work.
+* The replacement code must also compile.  This means rerast is better at replacing a deprecated API
+  usage with its non-deprecated equivalent than dealing with breaking changes.  Often the best
+  workaround is to create a new API temporarily.
 * Code within rustdoc is not yet processed and matched.
 * Conditional code that disabled with a cfg attribute isn't matched. It's suggested to enable all
   features if possible when running so that as much code can be checked as possible.
