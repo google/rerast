@@ -66,3 +66,53 @@ fn f1(point: Point, point_ref: &Point, mut_point_ref: &mut Point) {
 }
 ```
 
+### Remove the argument from a function
+
+[cargo-issue]: https://github.com/rust-lang/cargo/issues/5746
+[cargo-pr]: https://github.com/rust-lang/cargo/pull/5752
+
+This is a real world example from the Cargo project ([issue][cargo-issue], [PR][cargo-pr]).
+
+```rust
+use cargotest::support::{ project, project_foo };
+
+fn rule1(a: &'static str) {
+   replace!(project("foo") => project_foo());
+   replace!(project(a) => project_foo().at(a));
+}
+```
+
+Changes:
+
+```rust
+let p = project("foo")
+    .file("Cargo.toml", &basic_bin_manifest("foo"))
+    .file("src/foo.rs", &main_file(r#""i am foo""#, &[]))
+    .build();
+let _p2 = project("bar")
+    .file("Cargo.toml", &basic_bin_manifest("bar"))
+    .file("src/bar.rs", &main_file(r#""i am bar""#, &[]))
+    .build();
+```
+
+Into:
+
+```rust
+let p = project_foo()
+    .file("Cargo.toml", &basic_bin_manifest("foo"))
+    .file("src/foo.rs", &main_file(r#""i am foo""#, &[]))
+    .build();
+let _p2 = project_foo().at("bar")
+    .file("Cargo.toml", &basic_bin_manifest("bar"))
+    .file("src/bar.rs", &main_file(r#""i am bar""#, &[]))
+    .build();
+```
+
+When run like this:
+
+```terminal
+cargo +nightly rerast --rules_file=rewrite.rs --force --targets tests --file tests/testsuite/main.rs
+```
+
+Afterwhich a simple search and replace can rename `project_foo` back to `project` and the argument
+can be dropped.
