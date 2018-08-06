@@ -169,6 +169,7 @@ pub(crate) fn apply_substitutions<'a, S: SpanT + Sized>(
 fn code_is_single_tree(code: &str) -> bool {
     use syntax::codemap::FilePathMapping;
     use syntax::parse::{self, ParseSess};
+    use syntax::tokenstream::TokenTree;
 
     let session = ParseSess::new(FilePathMapping::empty());
     let ts = parse::parse_stream_from_source_str(
@@ -177,7 +178,16 @@ fn code_is_single_tree(code: &str) -> bool {
         &session,
         None,
     );
-    ts.len() == 1
+    let mut count = 0;
+    for tree in ts.into_trees() {
+        match tree {
+            TokenTree::Delimited(..) => {
+                count += 1;
+            }
+            _ => return false,
+        }
+    }
+    count <= 1
 }
 
 // TODO: We may want to warn if we somehow end up with overlapping matches that aren't duplicates.
