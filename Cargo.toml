@@ -8,6 +8,8 @@ readme = "README.md"
 categories = ["development-tools", "development-tools::cargo-plugins"]
 authors = [
     "David Lattimore <dvdlttmr@gmail.com>",
+    "Dale Wijnand",
+    "Kornel",
 ]
 
 [dependencies]
