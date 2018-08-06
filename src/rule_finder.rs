@@ -223,7 +223,7 @@ impl StartMatch for hir::Expr {
         self.span
     }
     fn walk<'gcx, V: intravisit::Visitor<'gcx>>(visitor: &mut V, node: &'gcx Self) {
-        intravisit::walk_expr(visitor, node);
+        visitor.visit_expr(node);
     }
     fn needs_parenthesis(parent: Option<&Self>, child: &Self) -> bool {
         OperatorPrecedence::needs_parenthesis(parent, child)
@@ -257,7 +257,7 @@ impl StartMatch for hir::Ty {
         self.span
     }
     fn walk<'gcx, V: intravisit::Visitor<'gcx>>(visitor: &mut V, node: &'gcx Self) {
-        intravisit::walk_ty(visitor, node);
+        visitor.visit_ty(node);
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
@@ -292,7 +292,7 @@ impl StartMatch for hir::TraitRef {
         self.path.span
     }
     fn walk<'gcx, V: intravisit::Visitor<'gcx>>(visitor: &mut V, node: &'gcx Self) {
-        intravisit::walk_trait_ref(visitor, node);
+        visitor.visit_trait_ref(node);
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         let ty = <hir::Ty as StartMatch>::extract_root(block)?;
@@ -328,7 +328,7 @@ impl StartMatch for hir::Pat {
         self.span
     }
     fn walk<'gcx, V: intravisit::Visitor<'gcx>>(visitor: &mut V, node: &'gcx Self) {
-        intravisit::walk_pat(visitor, node);
+        visitor.visit_pat(node);
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {

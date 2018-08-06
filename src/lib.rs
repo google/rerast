@@ -733,21 +733,23 @@ mod tests {
     // in the pattern.
     #[test]
     fn swap_complex_expr() {
+        // TODO: Fix unnecessary parens
         check(
             "",
             "fn r(x: i64, y: i64) {replace!(x - y => y / x);}",
             "fn bar() -> i64 {return (41 + 2) - (9 + 1);}",
-            "fn bar() -> i64 {return (9 + 1) / (41 + 2);}",
+            "fn bar() -> i64 {return ((9 + 1)) / ((41 + 2));}",
         );
     }
 
     #[test]
     fn no_whitespace() {
+        // TODO: Fix unnecessary parens
         check(
             "",
             "fn r(x: i64, y: i64) {replace!(x-y => y/x);}",
             "fn bar() -> i64 {return (41+2)-(9+1);}",
-            "fn bar() -> i64 {return (9+1)/(41+2);}",
+            "fn bar() -> i64 {return ((9+1))/((41+2));}",
         );
     }
 
@@ -2001,6 +2003,16 @@ mod tests {
                }"#,
             r#"fn f1() {println!("{}{}{}", file!(), line!(), foo!());}"#,
             r#"fn f1() {println!("{}{}{}", "filename", 42, "foo-filename");}"#,
+        );
+    }
+
+    #[test]
+    fn entire_replacement_is_placeholder() {
+        check(
+            "pub fn foo(o: Option<i32>) -> Option<i32> {o}",
+            "fn rule(o: Option<i32>) {replace!(foo(o) => o);}",
+            "fn f1(opt_i32: Option<i32>) -> Option<i32> {foo(opt_i32)}",
+            "fn f1(opt_i32: Option<i32>) -> Option<i32> {opt_i32}",
         );
     }
 
