@@ -1624,11 +1624,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
                     self.substitute_node_ids.insert(*node_id, *code_node_id);
 
                     let code = self.node_id_snippet(*code_node_id);
-                    self.result.push(CodeSubstitution {
-                        span: ident.span,
-                        new_code: code,
-                        needs_parenthesis: false,
-                    });
+                    self.result.push(CodeSubstitution::new(ident.span, code));
                 }
             }
         }
@@ -1647,11 +1643,10 @@ pub(crate) fn substitions_for_matches<'r, 'a, 'gcx>(
     ) {
         for m in matches {
             let replacement_src = m.get_replacement_source(tcx);
-            substitutions.push(CodeSubstitution {
-                span: m.original_span,
-                new_code: replacement_src,
-                needs_parenthesis: T::needs_parenthesis(m.parent_node, &*m.rule.replace),
-            });
+            substitutions.push(
+                CodeSubstitution::new(m.original_span, replacement_src)
+                    .needs_parenthesis(T::needs_parenthesis(m.parent_node, &*m.rule.replace)),
+            );
         }
     }
 

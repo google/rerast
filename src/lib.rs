@@ -733,23 +733,21 @@ mod tests {
     // in the pattern.
     #[test]
     fn swap_complex_expr() {
-        // TODO: Fix unnecessary parens
         check(
             "",
             "fn r(x: i64, y: i64) {replace!(x - y => y / x);}",
             "fn bar() -> i64 {return (41 + 2) - (9 + 1);}",
-            "fn bar() -> i64 {return ((9 + 1)) / ((41 + 2));}",
+            "fn bar() -> i64 {return (9 + 1) / (41 + 2);}",
         );
     }
 
     #[test]
     fn no_whitespace() {
-        // TODO: Fix unnecessary parens
         check(
             "",
             "fn r(x: i64, y: i64) {replace!(x-y => y/x);}",
             "fn bar() -> i64 {return (41+2)-(9+1);}",
-            "fn bar() -> i64 {return ((9+1))/((41+2));}",
+            "fn bar() -> i64 {return (9+1)/(41+2);}",
         );
     }
 
@@ -1225,6 +1223,17 @@ mod tests {
             "fn bar() {replace!(42 => 40 + 2);}",
             "fn f1() -> i32 {100 / 42}",
             "fn f1() -> i32 {100 / (40 + 2)}",
+        );
+    }
+
+    // Make sure we can't be tricked into not adding parenthesis.
+    #[test]
+    fn insert_parenthesis_lower_precedence_already_starts_and_ends_with_parenthesis() {
+        check(
+            "",
+            "fn bar() {replace!(42 => (50 - 10) + (1 + 1));}",
+            "fn f1() -> i32 {100 / 42}",
+            "fn f1() -> i32 {100 / ((50 - 10) + (1 + 1))}",
         );
     }
 

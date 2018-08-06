@@ -81,14 +81,21 @@ pub(crate) struct CodeSubstitution<S> {
     pub(crate) new_code: String,
     // Whether parenthesis are needed around the substitution.
     pub(crate) needs_parenthesis: bool,
+    // Whether `new_code` is a single token tree. e.g. an already parenthesised expression. If it
+    // is, then we needn't add parenthesis even if the precedence suggests that we do. This is
+    // necessary because our precedence rules are based on HIR which has no way to represent
+    // parenthesis.
+    code_is_single_tree: bool,
 }
 
 impl<S> CodeSubstitution<S> {
     pub(crate) fn new(span: S, new_code: String) -> CodeSubstitution<S> {
+        let single_tree = code_is_single_tree(&new_code);
         CodeSubstitution {
             span,
             new_code,
             needs_parenthesis: false,
+            code_is_single_tree: single_tree,
         }
     }
 
@@ -119,6 +126,7 @@ impl CodeSubstitution<Span> {
             },
             new_code: self.new_code,
             needs_parenthesis: self.needs_parenthesis,
+            code_is_single_tree: self.code_is_single_tree,
         }
     }
 }
@@ -134,11 +142,13 @@ pub(crate) fn apply_substitutions<'a, S: SpanT + Sized>(
     let mut span_lo = source_chunk.start_pos;
     for substitution in substitutions {
         output.push_str(source_chunk.get_snippet(span_lo, substitution.span.lo()));
-        if substitution.needs_parenthesis {
+        let should_add_parenthesis =
+            substitution.needs_parenthesis && !substitution.code_is_single_tree;
+        if should_add_parenthesis {
             output.push('(');
         }
         output.push_str(&substitution.new_code);
-        if substitution.needs_parenthesis {
+        if should_add_parenthesis {
             output.push(')');
         }
         span_lo = substitution.span.hi();
@@ -153,6 +163,21 @@ pub(crate) fn apply_substitutions<'a, S: SpanT + Sized>(
     }
     output.push_str(source_chunk.to_end_from(span_lo));
     output
+}
+
+/// Returns whether the supplied code is a single tokentree - e.g. a parenthesised expression.
+fn code_is_single_tree(code: &str) -> bool {
+    use syntax::codemap::FilePathMapping;
+    use syntax::parse::{self, ParseSess};
+
+    let session = ParseSess::new(FilePathMapping::empty());
+    let ts = parse::parse_stream_from_source_str(
+        syntax_pos::FileName::Anon,
+        code.to_owned(),
+        &session,
+        None,
+    );
+    ts.len() == 1
 }
 
 // TODO: We may want to warn if we somehow end up with overlapping matches that aren't duplicates.
