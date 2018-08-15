@@ -33,7 +33,6 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use syntax::ast;
 use syntax::codemap::{CodeMap, FileLoader, FilePathMapping};
 use syntax::ext::quote::rt::Span;
 use syntax::parse::{self, ParseSess};
@@ -571,7 +570,7 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReferencedPathsFinder<'a, 'gcx>
         intravisit::NestedVisitorMap::All(&self.tcx.hir)
     }
 
-    fn visit_path(&mut self, path: &'gcx hir::Path, _: ast::NodeId) {
+    fn visit_path(&mut self, path: &'gcx hir::Path, _: hir::HirId) {
         use hir::def::Def;
         match path.def {
             Def::Mod(_)

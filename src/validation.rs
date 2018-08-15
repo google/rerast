@@ -73,7 +73,7 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for SearchValidator<'a, 'gcx> {
         intravisit::NestedVisitorMap::All(&self.state.tcx.hir)
     }
 
-    fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: NodeId, span: Span) {
+    fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: hir::HirId, span: Span) {
         if let Some(node_id) = node_id_from_path(qpath) {
             if self.state.placeholders.contains(&node_id)
                 && !self.state.bound_placeholders.insert(node_id)
@@ -97,7 +97,7 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReplacementValidator<'a, 'gcx> 
         intravisit::NestedVisitorMap::All(&self.state.tcx.hir)
     }
 
-    fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: NodeId, span: Span) {
+    fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: hir::HirId, span: Span) {
         if let Some(node_id) = node_id_from_path(qpath) {
             if self.state.placeholders.contains(&node_id)
                 && !self.state.bound_placeholders.contains(&node_id)

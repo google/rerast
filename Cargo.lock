@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "rerast"
-version = "0.1.26"
+version = "0.1.27"
 dependencies = [
  "assert_cli 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
