@@ -36,7 +36,7 @@ impl ErrorWithSpan {
     pub(crate) fn with_snippet<'a, 'gcx>(self, tcx: TyCtxt<'a, 'gcx, 'gcx>) -> RerastError {
         RerastError {
             message: self.message,
-            file_lines: Some(tcx.sess.codemap().span_to_lines(self.span)),
+            file_lines: Some(tcx.sess.source_map().span_to_lines(self.span)),
         }
     }
 }

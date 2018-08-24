@@ -28,7 +28,7 @@ use std::mem;
 use syntax;
 use syntax::ast;
 use syntax::ast::NodeId;
-use syntax::codemap::{self, Spanned};
+use syntax::source_map::{self, Spanned};
 use syntax::ext::quote::rt::Span;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
@@ -85,7 +85,7 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
         }
         self.tcx
             .sess
-            .codemap()
+            .source_map()
             .span_to_snippet(node.span())
             .map(|snippet| {
                 if self.config.debug_snippet == "list_all" {
@@ -405,7 +405,7 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     }
 
     fn span_to_snippet(&self, span: Span) -> Result<String, SpanSnippetError> {
-        self.tcx.sess.codemap().span_to_snippet(span)
+        self.tcx.sess.source_map().span_to_snippet(span)
     }
 }
 
@@ -1312,13 +1312,13 @@ impl<'r, 'a, 'gcx, 'tcx, T: StartMatch> Match<'r, 'gcx, T> {
             parent_expr: None,
             substitute_node_ids: HashMap::new(),
         };
-        let codemap = tcx.sess.codemap();
+        let source_map = tcx.sess.source_map();
         T::walk(&mut replacement_visitor, replacement);
         let substitutions = replacement_visitor.result;
-        //Replacer::print_macro_backtrace("SPAN_BT", codemap, replacement.span());
-        CodeSubstitution::apply_with_codemap(
+        //Replacer::print_macro_backtrace("SPAN_BT", source_map, replacement.span());
+        CodeSubstitution::apply_with_source_map(
             &substitutions,
-            codemap,
+            source_map,
             replacement.span().source_callsite(),
         )
     }
@@ -1484,8 +1484,8 @@ fn get_original_spans(search_span: Span, code_span: Span) -> Option<(Span, Span)
     }
 }
 
-fn is_same_expansion(a: &codemap::ExpnInfo, b: &codemap::ExpnInfo) -> bool {
-    use codemap::ExpnFormat::*;
+fn is_same_expansion(a: &source_map::ExpnInfo, b: &source_map::ExpnInfo) -> bool {
+    use source_map::ExpnFormat::*;
     a.format == b.format && match a.format {
         MacroBang(_) => a.def_site == b.def_site,
         // Not sure what we want to do here
@@ -1530,8 +1530,8 @@ struct ReplacementVisitor<'r, 'a: 'r, 'gcx: 'a, T: StartMatch + 'gcx> {
 impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
     // Returns a snippet of code for the supplied definition.
     fn node_id_snippet(&self, node_id: NodeId) -> String {
-        let codemap = self.tcx.sess.codemap();
-        codemap.span_to_snippet(self.tcx.hir.span(node_id)).unwrap()
+        let source_map = self.tcx.sess.source_map();
+        source_map.span_to_snippet(self.tcx.hir.span(node_id)).unwrap()
     }
 
     // Check if the supplied expression is a placeholder variable. If it is, replace the supplied
@@ -1557,12 +1557,12 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
     }
 
     fn process_placeholder(&mut self, placeholder: &Placeholder<'r, 'gcx>, placeholder_span: Span) {
-        let codemap = self.tcx.sess.codemap();
+        let source_map = self.tcx.sess.source_map();
         let span = placeholder
             .contents
             .get_span(self.current_match.original_span);
         let substitutions = substitions_for_matches(self.tcx, &placeholder.matches);
-        let new_code = CodeSubstitution::apply_with_codemap(&substitutions, codemap, span);
+        let new_code = CodeSubstitution::apply_with_source_map(&substitutions, source_map, span);
 
         self.result.push(
             CodeSubstitution::new(placeholder_span, new_code)

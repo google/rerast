@@ -24,7 +24,7 @@ extern crate syntax_pos;
 use errors::RerastErrors;
 use file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
 use rustc::hir::{self, intravisit};
-use rustc::ty::{TyCtxt, TypeVariants};
+use rustc::ty::{TyCtxt, TyKind};
 use std::cell::RefCell;
 use std::collections::hash_map::{DefaultHasher, HashMap};
 use std::collections::hash_set::HashSet;
@@ -33,11 +33,11 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use syntax::codemap::{CodeMap, FileLoader, FilePathMapping};
+use syntax::source_map::{SourceMap, FileLoader, FilePathMapping};
 use syntax::ext::quote::rt::Span;
 use syntax::parse::{self, ParseSess};
 use syntax::tokenstream::{TokenStream, TokenTree};
-use syntax_pos::{BytePos, FileMap, Pos, SyntaxContext};
+use syntax_pos::{BytePos, Pos, SyntaxContext};
 use CompilerInvocationInfo;
 
 struct PlaceholderCandidate<T> {
@@ -148,7 +148,7 @@ where
         let mut candidate = self.stack.pop().unwrap();
         candidate.hash = if candidate.children.is_empty() {
             // Leaf node. Get a token stream and hash its tokens.
-            let snippet = self.tcx.sess.codemap().span_to_snippet(expr.span).unwrap();
+            let snippet = self.tcx.sess.source_map().span_to_snippet(expr.span).unwrap();
             let session = ParseSess::new(FilePathMapping::empty());
             let stream = parse::parse_stream_from_source_str(
                 syntax_pos::FileName::Anon,
@@ -182,7 +182,7 @@ fn span_within_span(span: Span, target: Span) -> Span {
 struct RelativeSpan(Range<BytePos>);
 
 impl RelativeSpan {
-    fn new(absolute_span: Span, filemap: &FileMap) -> RelativeSpan {
+    fn new(absolute_span: Span, filemap: &syntax_pos::SourceFile) -> RelativeSpan {
         let absolute_span = span_within_span(
             absolute_span,
             Span::new(filemap.start_pos, filemap.end_pos, syntax_pos::NO_EXPANSION),
@@ -193,7 +193,7 @@ impl RelativeSpan {
         RelativeSpan((absolute_span.lo() - start_pos)..(absolute_span.hi() - start_pos))
     }
 
-    fn absolute(&self, filemap: &FileMap) -> Span {
+    fn absolute(&self, filemap: &syntax_pos::SourceFile) -> Span {
         let start_pos = filemap.start_pos;
         let result = Span::new(
             self.0.start + start_pos,
@@ -222,14 +222,14 @@ impl ChangedSpan {
         }
     }
 
-    fn from_span(span: Span, filemap: &FileMap) -> ChangedSpan {
+    fn from_span(span: Span, filemap: &syntax_pos::SourceFile) -> ChangedSpan {
         ChangedSpan {
             common_prefix: (span.lo() - filemap.start_pos).to_usize(),
             common_suffix: (filemap.end_pos - span.hi()).to_usize(),
         }
     }
 
-    fn to_span(&self, filemap: &FileMap) -> Span {
+    fn to_span(&self, filemap: &syntax_pos::SourceFile) -> Span {
         Span::new(
             filemap.start_pos + BytePos::from_usize(self.common_prefix),
             filemap.end_pos - BytePos::from_usize(self.common_suffix),
@@ -277,8 +277,8 @@ fn after_analysis<'a, 'gcx>(
 ) {
     state.session.abort_if_errors();
     let tcx = state.tcx.unwrap();
-    let codemap = tcx.sess.codemap();
-    let maybe_filemap = codemap.get_filemap(&syntax_pos::FileName::Real(PathBuf::from(
+    let source_map = tcx.sess.source_map();
+    let maybe_filemap = source_map.get_source_file(&syntax_pos::FileName::Real(PathBuf::from(
         &find_rules_state.modified_file_name,
     )));
     let filemap = if let Some(f) = maybe_filemap {
@@ -341,7 +341,7 @@ fn analyse_original_source<'a, 'gcx: 'a>(
     body_id: hir::BodyId,
     item: &'gcx hir::Item,
 ) -> String {
-    let codemap = tcx.sess.codemap();
+    let source_map = tcx.sess.source_map();
     let mut others_by_hash = HashMap::new();
     populate_placeholder_map(
         &changed_side_state.candidate_placeholders,
@@ -349,7 +349,7 @@ fn analyse_original_source<'a, 'gcx: 'a>(
     );
     let mut candidates =
         PlaceholderCandidateFinder::find_placeholder_candidates(tcx, expr, |child_expr| child_expr);
-    let other_filemap = codemap.new_filemap(
+    let other_filemap = source_map.new_source_file(
         syntax_pos::FileName::Custom("__other_source".to_owned()),
         modified_source,
     );
@@ -385,13 +385,13 @@ fn build_rule<'a, 'gcx: 'a>(
     right_paths: &HashSet<String>,
     replacement_span: Span,
 ) -> String {
-    let codemap = tcx.sess.codemap();
+    let source_map = tcx.sess.source_map();
     let type_tables = tcx.body_tables(body_id);
     let mut uses_type_params = false;
     for ph in placeholders {
         let ph_ty = type_tables.expr_ty(ph.expr);
         for subtype in ph_ty.walk() {
-            if let TypeVariants::TyParam(..) = subtype.sty {
+            if let TyKind::Param(..) = subtype.sty {
                 uses_type_params = true;
             }
         }
@@ -400,7 +400,7 @@ fn build_rule<'a, 'gcx: 'a>(
     let where_string;
     if uses_type_params {
         if let Some(generics) = item.node.generics() {
-            generics_string = codemap.span_to_snippet(generics.span).unwrap();
+            generics_string = source_map.span_to_snippet(generics.span).unwrap();
             let mut where_predicate_strings = Vec::new();
             for predicate in &generics.where_clause.predicates {
                 let span = match *predicate {
@@ -408,7 +408,7 @@ fn build_rule<'a, 'gcx: 'a>(
                     hir::WherePredicate::RegionPredicate(ref p) => p.span,
                     hir::WherePredicate::EqPredicate(ref p) => p.span,
                 };
-                where_predicate_strings.push(codemap.span_to_snippet(span).unwrap());
+                where_predicate_strings.push(source_map.span_to_snippet(span).unwrap());
             }
             where_string = if where_predicate_strings.is_empty() {
                 String::new()
@@ -444,9 +444,9 @@ fn build_rule<'a, 'gcx: 'a>(
             replacement_substitutions.push((*usage, format!("p{}", ph_num)));
         }
     }
-    let search = substitute_placeholders(codemap, expr.span, &mut search_substitutions);
+    let search = substitute_placeholders(source_map, expr.span, &mut search_substitutions);
     let replace =
-        substitute_placeholders(codemap, replacement_span, &mut replacement_substitutions);
+        substitute_placeholders(source_map, replacement_span, &mut replacement_substitutions);
     format!(
         "{}fn r1{}({}){} {{replace!({} => {});}}",
         use_statements, generics_string, arg_decls, where_string, search, replace
@@ -454,7 +454,7 @@ fn build_rule<'a, 'gcx: 'a>(
 }
 
 fn substitute_placeholders(
-    codemap: &CodeMap,
+    source_map: &SourceMap,
     span: Span,
     substitutions: &mut [(Span, String)],
 ) -> String {
@@ -462,13 +462,13 @@ fn substitute_placeholders(
     let mut result = String::new();
     let mut start = span.lo();
     for &(subst_span, ref substitution) in substitutions.iter() {
-        result += &codemap
+        result += &source_map
             .span_to_snippet(Span::new(start, subst_span.lo(), syntax_pos::NO_EXPANSION))
             .unwrap();
         result += substitution;
         start = subst_span.hi();
     }
-    result += &codemap
+    result += &source_map
         .span_to_snippet(Span::new(start, span.hi(), syntax_pos::NO_EXPANSION))
         .unwrap();
     result
@@ -476,7 +476,7 @@ fn substitute_placeholders(
 
 struct PlaceholderMatcher<'a, 'gcx: 'a, 'placeholders> {
     tcx: TyCtxt<'a, 'gcx, 'gcx>,
-    other_filemap: Rc<FileMap>,
+    other_filemap: Rc<syntax_pos::SourceFile>,
     other_candidates: HashMap<u64, Vec<&'placeholders PlaceholderCandidate<RelativeSpan>>>,
     placeholders_found: Vec<Placeholder<'gcx>>,
     used_placeholder_spans: Vec<Span>,
@@ -489,8 +489,8 @@ impl<'a, 'gcx: 'a, 'placeholders> PlaceholderMatcher<'a, 'gcx, 'placeholders> {
         for candidate in candidates {
             let mut got_match = false;
             if let Some(matching_others) = self.other_candidates.get(&candidate.hash) {
-                let codemap = self.tcx.sess.codemap();
-                let source = codemap.span_to_snippet(candidate.data.span).unwrap();
+                let source_map = self.tcx.sess.source_map();
+                let source = source_map.span_to_snippet(candidate.data.span).unwrap();
                 let mut placeholder = Placeholder {
                     expr: candidate.data,
                     uses: Vec::new(),
@@ -504,7 +504,7 @@ impl<'a, 'gcx: 'a, 'placeholders> PlaceholderMatcher<'a, 'gcx, 'placeholders> {
                         None,
                     );
                     let other_span = other.data.absolute(&*self.other_filemap);
-                    let other_source = codemap.span_to_snippet(other_span).unwrap();
+                    let other_source = source_map.span_to_snippet(other_span).unwrap();
                     let other_stream = parse::parse_stream_from_source_str(
                         syntax_pos::FileName::Custom("right".to_owned()),
                         other_source,
@@ -580,7 +580,7 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReferencedPathsFinder<'a, 'gcx>
             | Def::Variant(_)
             | Def::Trait(_)
             | Def::TyAlias(_)
-            | Def::TyForeign(_)
+            | Def::ForeignTy(_)
             | Def::Fn(_)
             | Def::Const(_)
             | Def::Static(..)

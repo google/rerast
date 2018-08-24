@@ -36,7 +36,7 @@ use std::fs::{self, File};
 use std::io::prelude::*;
 use std::io::Write;
 use std::path::Path;
-use syntax::codemap::RealFileLoader;
+use syntax::source_map::RealFileLoader;
 
 // Environment variables that we use to pass data from the outer invocation of cargo-rerast through
 // to the inner invocation which runs within cargo check.

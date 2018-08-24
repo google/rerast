@@ -110,8 +110,8 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::Vec;
 use syntax::ast::NodeId;
-use syntax::codemap::FileLoader;
-use syntax::codemap::{self, CodeMap};
+use syntax::source_map::FileLoader;
+use syntax::source_map::{self, SourceMap};
 use syntax::ext::quote::rt::Span;
 use syntax::symbol::Symbol;
 use syntax_pos::SyntaxContext;
@@ -265,7 +265,7 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
     }
 
     #[allow(dead_code)]
-    fn print_macro_backtrace(msg: &str, codemap: &CodeMap, span: Span) {
+    fn print_macro_backtrace(msg: &str, codemap: &SourceMap, span: Span) {
         println!(
             "{}: {}",
             msg,
@@ -286,7 +286,7 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
     }
 
     fn apply_to_crate(&self, krate: &'gcx hir::Crate) -> FileRelativeSubstitutions {
-        let codemap = self.tcx.sess.codemap();
+        let codemap = self.tcx.sess.source_map();
 
         let matches = rule_matcher::RuleMatcher::find_matches(
             self.tcx,
@@ -368,7 +368,7 @@ fn find_and_apply_rules<'a, 'gcx>(
         None => {
             if config.verbose {
                 if let syntax_pos::FileName::Real(filename) =
-                    tcx.sess.codemap().span_to_filename(krate.module.inner)
+                    tcx.sess.source_map().span_to_filename(krate.module.inner)
                 {
                     println!(
                         "A build target was skipped due to apparently being empty: {:?}",

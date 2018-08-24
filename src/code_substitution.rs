@@ -16,8 +16,8 @@ use itertools::Itertools;
 use std::collections::{hash_map, HashMap};
 use std::io;
 use std::path::PathBuf;
-use syntax::codemap::CodeMap;
-use syntax::codemap::FileLoader;
+use syntax::source_map::SourceMap;
+use syntax::source_map::FileLoader;
 use syntax::ext::quote::rt::Span;
 use syntax_pos::{self, BytePos};
 
@@ -106,12 +106,12 @@ impl<S> CodeSubstitution<S> {
 }
 
 impl CodeSubstitution<Span> {
-    pub(crate) fn apply_with_codemap<'a>(
+    pub(crate) fn apply_with_source_map<'a>(
         substitutions: &[CodeSubstitution<Span>],
-        codemap: &CodeMap,
+        source_map: &SourceMap,
         base_span: Span,
     ) -> String {
-        let base_source = codemap.span_to_snippet(base_span).unwrap();
+        let base_source = source_map.span_to_snippet(base_span).unwrap();
         apply_substitutions(
             substitutions,
             SourceChunk::new(&base_source, base_span.lo()),
@@ -167,7 +167,7 @@ pub(crate) fn apply_substitutions<'a, S: SpanT + Sized>(
 
 /// Returns whether the supplied code is a single tokentree - e.g. a parenthesised expression.
 fn code_is_single_tree(code: &str) -> bool {
-    use syntax::codemap::FilePathMapping;
+    use syntax::source_map::FilePathMapping;
     use syntax::parse::{self, ParseSess};
     use syntax::tokenstream::TokenTree;
 
@@ -209,21 +209,21 @@ pub struct FileRelativeSubstitutions {
 impl FileRelativeSubstitutions {
     pub(crate) fn new(
         substitutions: Vec<CodeSubstitution<Span>>,
-        codemap: &CodeMap,
+        source_map: &SourceMap,
     ) -> FileRelativeSubstitutions {
         let mut by_file: HashMap<PathBuf, Vec<CodeSubstitution<LocalSpan>>> = HashMap::new();
         let substitutions_grouped_by_file = substitutions
             .into_iter()
-            .group_by(|subst| codemap.span_to_filename(subst.span));
+            .group_by(|subst| source_map.span_to_filename(subst.span));
         for (filename, file_substitutions) in &substitutions_grouped_by_file {
             if let syntax_pos::FileName::Real(ref path) = filename {
                 let file_relative_for_file = by_file
                     .entry(path.to_path_buf())
                     .or_insert_with(Default::default);
-                let filemap = codemap.get_filemap(&filename).unwrap();
+                let source_file = source_map.get_source_file(&filename).unwrap();
                 for subst in file_substitutions {
                     file_relative_for_file
-                        .push(subst.as_file_local_substitution(filemap.start_pos));
+                        .push(subst.as_file_local_substitution(source_file.start_pos));
                 }
                 file_relative_for_file.sort();
                 remove_duplicate_or_overlapping_matches(file_relative_for_file);

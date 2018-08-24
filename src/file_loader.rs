@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use syntax::codemap::{FileLoader, RealFileLoader};
+use syntax::source_map::{FileLoader, RealFileLoader};
 
 #[derive(Clone)]
 pub(crate) struct InMemoryFileLoader<T: FileLoader + Send + Sync> {
