@@ -169,7 +169,9 @@ impl CompilerInvocationInfo {
         for (k, v) in &self.env {
             std::env::set_var(k, v);
         }
-        let (_, _) = rustc_driver::run_compiler(&self.args, compiler_calls, file_loader, None);
+        syntax::with_globals(|| {
+            let (_, _) = rustc_driver::run_compiler(&self.args, compiler_calls, file_loader, None);
+        });
         for (k, _) in &self.env {
             std::env::set_var(k, "");
         }
