@@ -822,6 +822,20 @@ impl Matchable for hir::Arm {
     }
 }
 
+impl Matchable for hir::Guard {
+    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+        &self,
+        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
+        code: &'gcx Self,
+    ) -> bool {
+        match (self, code) {
+            (hir::Guard::If(ref p_expr), hir::Guard::If(ref c_expr)) => {
+                p_expr.attempt_match(state, c_expr)
+            }
+        }
+    }
+}
+
 impl Matchable for hir::Pat {
     fn attempt_match<'r, 'a, 'gcx, 'tcx>(
         &self,
