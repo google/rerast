@@ -58,7 +58,7 @@ impl<'a, 'gcx> RerastDefinitionsFinder<'a, 'gcx> {
 // something I've missed, but so far I haven't found one.
 impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RerastDefinitionsFinder<'a, 'gcx> {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir)
+        intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
     fn visit_item(&mut self, item: &'gcx hir::Item) {
@@ -76,10 +76,10 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RerastDefinitionsFinder<'a, '
     }
 
     fn visit_body(&mut self, body: &'gcx hir::Body) {
-        let fn_id = self.tcx.hir.body_owner_def_id(body.id());
+        let fn_id = self.tcx.hir().body_owner_def_id(body.id());
         if self.tcx.item_name(fn_id) == "rerast_types" {
             let tables = self.tcx.typeck_tables_of(fn_id);
-            let hir = &self.tcx.hir;
+            let hir = &self.tcx.hir();
             let mut types = body
                 .arguments
                 .iter()

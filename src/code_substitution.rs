@@ -173,7 +173,7 @@ fn code_is_single_tree(code: &str) -> bool {
 
     let session = ParseSess::new(FilePathMapping::empty());
     let ts = parse::parse_stream_from_source_str(
-        syntax_pos::FileName::Anon,
+        syntax_pos::FileName::anon_source_code(code),
         code.to_owned(),
         &session,
         None,

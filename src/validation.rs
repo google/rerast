@@ -42,7 +42,7 @@ impl<'gcx, T: StartMatch + 'gcx> Rule<'gcx, T> {
         &self,
         tcx: TyCtxt<'a, 'gcx, 'gcx>,
     ) -> Result<(), Vec<ErrorWithSpan>> {
-        let rule_body = tcx.hir.body(self.body_id);
+        let rule_body = tcx.hir().body(self.body_id);
 
         let mut search_validator = SearchValidator {
             state: ValidatorState {
@@ -70,7 +70,7 @@ struct SearchValidator<'a, 'gcx: 'a> {
 
 impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for SearchValidator<'a, 'gcx> {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
-        intravisit::NestedVisitorMap::All(&self.state.tcx.hir)
+        intravisit::NestedVisitorMap::All(&self.state.tcx.hir())
     }
 
     fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: hir::HirId, span: Span) {
@@ -94,7 +94,7 @@ struct ReplacementValidator<'a, 'gcx: 'a> {
 
 impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReplacementValidator<'a, 'gcx> {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
-        intravisit::NestedVisitorMap::All(&self.state.tcx.hir)
+        intravisit::NestedVisitorMap::All(&self.state.tcx.hir())
     }
 
     fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: hir::HirId, span: Span) {

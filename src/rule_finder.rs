@@ -117,7 +117,7 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
             let replace = T::extract_root(replace_block)?;
             let placeholder_ids = self
                 .tcx
-                .hir
+                .hir()
                 .body(body_id)
                 .arguments
                 .iter()
@@ -143,7 +143,7 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
 
 impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir)
+        intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
     fn visit_item(&mut self, item: &'gcx hir::Item) {
@@ -171,9 +171,9 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
                 if let Some(body_id) = self.body_id {
                     let type_tables = self
                         .tcx
-                        .typeck_tables_of(self.tcx.hir.body_owner_def_id(body_id));
+                        .typeck_tables_of(self.tcx.hir().body_owner_def_id(body_id));
                     let arg0 = &args[0];
-                    let arg_ty = type_tables.node_id_to_type(self.tcx.hir.node_to_hir_id(arg0.id));
+                    let arg_ty = type_tables.node_id_to_type(self.tcx.hir().node_to_hir_id(arg0.id));
                     if let Err(errors) = self.maybe_add_rule(arg_ty, arms, body_id, arg0.span) {
                         self.errors.extend(errors);
                     }

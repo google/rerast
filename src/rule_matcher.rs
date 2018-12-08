@@ -126,9 +126,9 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
         original_span: Span,
         rule: &'r Rule<'gcx, T>,
     ) -> Option<Match<'r, 'gcx, T>> {
-        let rule_fn_id = self.tcx.hir.body_owner_def_id(rule.body_id);
+        let rule_fn_id = self.tcx.hir().body_owner_def_id(rule.body_id);
         let rule_tables = self.tcx.body_tables(rule.body_id);
-        let rule_body = self.tcx.hir.body(rule.body_id);
+        let rule_body = self.tcx.hir().body(rule.body_id);
 
         let maybe_match_placeholders = self.tcx.infer_ctxt().enter(|infcx| {
             let tcx = infcx.tcx;
@@ -138,7 +138,7 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
                 .iter()
                 .map(|arg| {
                     (arg.pat.id, {
-                        let ty = rule_tables.node_id_to_type(self.tcx.hir.node_to_hir_id(arg.id));
+                        let ty = rule_tables.node_id_to_type(self.tcx.hir().node_to_hir_id(arg.id));
                         ty.subst(tcx, substs)
                     })
                 })
@@ -219,7 +219,7 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
 
 impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir)
+        intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
     fn visit_item(&mut self, item: &'gcx hir::Item) {
@@ -369,10 +369,10 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     ) -> bool {
         if let Some(&hir::def::Def::Method(method_id)) = fn_type_tables
             .type_dependent_defs()
-            .get(self.tcx.hir.node_to_hir_id(fn_expr.id))
+            .get(self.tcx.hir().node_to_hir_id(fn_expr.id))
         {
             return method_type_tables.type_dependent_defs()
-                [self.tcx.hir.node_to_hir_id(method_call_id)]
+                [self.tcx.hir().node_to_hir_id(method_call_id)]
                 .def_id()
                 == method_id;
         }
@@ -1080,7 +1080,7 @@ impl Matchable for hir::DeclKind {
         match (self, code) {
             (&DeclKind::Local(ref p), &DeclKind::Local(ref c)) => p.attempt_match(state, c),
             (&DeclKind::Item(ref p), &DeclKind::Item(ref c)) => {
-                let krate = state.tcx.hir.krate();
+                let krate = state.tcx.hir().krate();
                 krate.item(p.id).attempt_match(state, krate.item(c.id))
             }
             _ => false,
@@ -1155,8 +1155,8 @@ impl Matchable for hir::BodyId {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        let p_body = state.tcx.hir.body(*self);
-        let c_body = state.tcx.hir.body(*code);
+        let p_body = state.tcx.hir().body(*self);
+        let c_body = state.tcx.hir().body(*code);
         p_body.attempt_match(state, c_body)
     }
 }
@@ -1545,7 +1545,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
     // Returns a snippet of code for the supplied definition.
     fn node_id_snippet(&self, node_id: NodeId) -> String {
         let source_map = self.tcx.sess.source_map();
-        source_map.span_to_snippet(self.tcx.hir.span(node_id)).unwrap()
+        source_map.span_to_snippet(self.tcx.hir().span(node_id)).unwrap()
     }
 
     // Check if the supplied expression is a placeholder variable. If it is, replace the supplied
@@ -1589,7 +1589,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
     for ReplacementVisitor<'r, 'a, 'gcx, T>
 {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir)
+        intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
     fn visit_expr(&mut self, expr: &'gcx hir::Expr) {

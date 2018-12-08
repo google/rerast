@@ -364,7 +364,7 @@ fn find_and_apply_rules<'a, 'gcx>(
     config: Config,
 ) -> Result<RerastOutput, RerastErrors> {
     let tcx = state.tcx.unwrap();
-    let krate = tcx.hir.krate();
+    let krate = tcx.hir().krate();
     let rerast_definitions = match RerastDefinitionsFinder::find_definitions(tcx, krate) {
         Some(r) => r,
         None => {
@@ -421,7 +421,7 @@ impl<'a, 'gcx> DeclaredNamesFinder<'a, 'gcx> {
 
 impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for DeclaredNamesFinder<'a, 'gcx> {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir)
+        intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
     fn visit_pat(&mut self, pat: &'gcx hir::Pat) {

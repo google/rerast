@@ -136,7 +136,7 @@ where
     F: Fn(&'gcx hir::Expr) -> T,
 {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir)
+        intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
     fn visit_expr(&mut self, expr: &'gcx hir::Expr) {
@@ -151,7 +151,7 @@ where
             let snippet = self.tcx.sess.source_map().span_to_snippet(expr.span).unwrap();
             let session = ParseSess::new(FilePathMapping::empty());
             let stream = parse::parse_stream_from_source_str(
-                syntax_pos::FileName::Anon,
+                syntax_pos::FileName::anon_source_code(&snippet),
                 snippet,
                 &session,
                 None,
@@ -294,7 +294,7 @@ fn after_analysis<'a, 'gcx>(
         body_id: None,
         current_item: None,
     };
-    intravisit::walk_crate(&mut rule_finder, tcx.hir.krate());
+    intravisit::walk_crate(&mut rule_finder, tcx.hir().krate());
     match rule_finder.candidate {
         Node::NotFound => {}
         Node::Expr(expr, body_id, item) => {
@@ -567,7 +567,7 @@ impl<'a, 'gcx: 'a> ReferencedPathsFinder<'a, 'gcx> {
 
 impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReferencedPathsFinder<'a, 'gcx> {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir)
+        intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
     fn visit_path(&mut self, path: &'gcx hir::Path, _: hir::HirId) {
@@ -612,7 +612,7 @@ struct RuleFinder<'a, 'gcx: 'a> {
 
 impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir)
+        intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
     fn visit_item(&mut self, item: &'gcx hir::Item) {
