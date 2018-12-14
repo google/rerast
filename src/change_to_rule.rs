@@ -83,8 +83,8 @@ fn hash_token_stream(stream: &TokenStream, hasher: &mut DefaultHasher) {
                 // different tree structures will likely get different hashes.
                 42.hash(hasher)
             }
-            TokenTree::Delimited(_span, delimited) => {
-                hash_token_stream(&delimited.stream(), hasher)
+            TokenTree::Delimited(_span, _delimited, tts) => {
+                hash_token_stream(&tts.stream(), hasher)
             }
         }
     }
