@@ -16,9 +16,9 @@ use itertools::Itertools;
 use std::collections::{hash_map, HashMap};
 use std::io;
 use std::path::PathBuf;
-use syntax::source_map::SourceMap;
-use syntax::source_map::FileLoader;
 use syntax::ext::quote::rt::Span;
+use syntax::source_map::FileLoader;
+use syntax::source_map::SourceMap;
 use syntax_pos::{self, BytePos};
 
 /// A span within a file. Also differs from rustc's Span in that it's not interned, which allows us
@@ -167,8 +167,8 @@ pub(crate) fn apply_substitutions<'a, S: SpanT + Sized>(
 
 /// Returns whether the supplied code is a single tokentree - e.g. a parenthesised expression.
 fn code_is_single_tree(code: &str) -> bool {
-    use syntax::source_map::FilePathMapping;
     use syntax::parse::{self, ParseSess};
+    use syntax::source_map::FilePathMapping;
     use syntax::tokenstream::TokenTree;
 
     let session = ParseSess::new(FilePathMapping::empty());

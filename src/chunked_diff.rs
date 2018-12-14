@@ -53,7 +53,8 @@ impl<'a> fmt::Display for Chunk<'a> {
                 self.left_range.len(),
                 self.right_range.start,
                 self.right_range.len()
-            ).cyan()
+            )
+            .cyan()
         )?;
         for line in &self.lines {
             match *line {
@@ -95,21 +96,23 @@ fn chunked_diff<'a>(left: &'a str, right: &'a str, context: usize) -> Vec<Chunk<
                 chunk.lines.push(diff);
                 after_context_remaining = context;
             }
-            diff::Result::Both(_, _) => if after_context_remaining > 0 {
-                chunk.lines.push(diff);
-                chunk.left_range.end = left_line_num;
-                chunk.right_range.end = right_line_num;
-                after_context_remaining -= 1;
-            } else {
-                recent_common.push_back(diff);
-                if recent_common.len() > context {
-                    if !chunk.lines.is_empty() {
-                        chunks.push(chunk);
-                        chunk = Chunk::new();
+            diff::Result::Both(_, _) => {
+                if after_context_remaining > 0 {
+                    chunk.lines.push(diff);
+                    chunk.left_range.end = left_line_num;
+                    chunk.right_range.end = right_line_num;
+                    after_context_remaining -= 1;
+                } else {
+                    recent_common.push_back(diff);
+                    if recent_common.len() > context {
+                        if !chunk.lines.is_empty() {
+                            chunks.push(chunk);
+                            chunk = Chunk::new();
+                        }
+                        recent_common.pop_front();
                     }
-                    recent_common.pop_front();
                 }
-            },
+            }
         }
     }
     if !chunk.lines.is_empty() {

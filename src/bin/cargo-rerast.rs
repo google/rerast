@@ -154,7 +154,7 @@ fn get_compiler_invocation_infos_for_local_package(
                                 bail!("Expected JSON string, got: {:?}", v);
                             }
                         })
-                    // First value will be the path to cargo-rerast, skip it.
+                        // First value will be the path to cargo-rerast, skip it.
                         .skip(1)
                         .collect();
                     let mut env: HashMap<String, String> = HashMap::new();

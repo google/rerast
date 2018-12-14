@@ -28,9 +28,9 @@ use std::mem;
 use syntax;
 use syntax::ast;
 use syntax::ast::NodeId;
-use syntax::source_map::{self, Spanned};
 use syntax::ext::quote::rt::Span;
 use syntax::ptr::P;
+use syntax::source_map::{self, Spanned};
 use syntax::symbol::Symbol;
 use syntax_pos::SpanSnippetError;
 use Config;
@@ -201,10 +201,11 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
                         intravisit::Visitor::visit_expr(self, placeholder_expr);
                     }
                 }
-                PlaceholderContents::Statements(placeholder_stmts) => for stmt in placeholder_stmts
-                {
-                    intravisit::Visitor::visit_stmt(self, stmt);
-                },
+                PlaceholderContents::Statements(placeholder_stmts) => {
+                    for stmt in placeholder_stmts {
+                        intravisit::Visitor::visit_stmt(self, stmt);
+                    }
+                }
                 PlaceholderContents::Pattern(pattern) => {
                     // TODO: Check if it's possible for the entire pattern to be the
                     // placeholder. If it is, we might need to only process children like we do
@@ -327,11 +328,12 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
                 let c_ty_adjusted = self.code_type_tables().expr_ty_adjusted(expr);
                 let cause = ObligationCause::dummy();
                 let param_env = ty::ParamEnv::empty();
-                if self.infcx.at(&cause, param_env).sub(p_ty, c_ty).is_err() && self
-                    .infcx
-                    .at(&cause, param_env)
-                    .sub(p_ty, c_ty_adjusted)
-                    .is_err()
+                if self.infcx.at(&cause, param_env).sub(p_ty, c_ty).is_err()
+                    && self
+                        .infcx
+                        .at(&cause, param_env)
+                        .sub(p_ty, c_ty_adjusted)
+                        .is_err()
                 {
                     debug!(self, "Types didn't match");
                     return false;
@@ -373,7 +375,7 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
         {
             return method_type_tables.type_dependent_defs()
                 [self.tcx.hir().node_to_hir_id(method_call_id)]
-                .def_id()
+            .def_id()
                 == method_id;
         }
         false
@@ -437,10 +439,11 @@ impl<T: Matchable> Matchable for [T] {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.len() == code.len() && self
-            .iter()
-            .zip(code.iter())
-            .all(|(p, c)| p.attempt_match(state, c))
+        self.len() == code.len()
+            && self
+                .iter()
+                .zip(code.iter())
+                .all(|(p, c)| p.attempt_match(state, c))
     }
 }
 
@@ -568,10 +571,11 @@ impl Matchable for hir::Expr {
                 &ExprKind::Block(ref c_block, ref c_label),
             ) => p_block.attempt_match(state, c_block) && p_label.attempt_match(state, c_label),
             (&ExprKind::Cast(ref p_expr, ref _p_ty), &ExprKind::Cast(ref c_expr, ref _c_ty)) => {
-                p_expr.attempt_match(state, c_expr) && state.can_sub(
-                    state.rule_type_tables.expr_ty(self),
-                    state.code_type_tables().expr_ty(code),
-                )
+                p_expr.attempt_match(state, c_expr)
+                    && state.can_sub(
+                        state.rule_type_tables.expr_ty(self),
+                        state.code_type_tables().expr_ty(code),
+                    )
             }
             (
                 &ExprKind::Index(ref p_expr, ref p_index),
@@ -1375,13 +1379,15 @@ impl<'gcx> PlaceholderContents<'gcx> {
         use self::PlaceholderContents::*;
         match *self {
             Expr(expr) => span_within_span(expr.span, target),
-            Statements(stmts) => if let Some(stmt) = stmts.get(0) {
-                let result = span_within_span(stmt.span, target);
-                let last_span = span_within_span(stmts[stmts.len() - 1].span, target);
-                result.with_hi(last_span.hi())
-            } else {
-                syntax::ext::quote::rt::DUMMY_SP
-            },
+            Statements(stmts) => {
+                if let Some(stmt) = stmts.get(0) {
+                    let result = span_within_span(stmt.span, target);
+                    let last_span = span_within_span(stmts[stmts.len() - 1].span, target);
+                    result.with_hi(last_span.hi())
+                } else {
+                    syntax::ext::quote::rt::DUMMY_SP
+                }
+            }
             Pattern(pattern) => pattern.span,
         }
     }
@@ -1500,14 +1506,15 @@ fn get_original_spans(search_span: Span, code_span: Span) -> Option<(Span, Span)
 
 fn is_same_expansion(a: &source_map::ExpnInfo, b: &source_map::ExpnInfo) -> bool {
     use source_map::ExpnFormat::*;
-    a.format == b.format && match a.format {
-        MacroBang(_) => a.def_site == b.def_site,
-        // Not sure what we want to do here
-        MacroAttribute(_) => unimplemented!(),
-        // For desugaring, we ignore the span since it seems to just duplicate the span of the
-        // caller which definitely won't be the same for two separate occurences.
-        CompilerDesugaring(_) => true,
-    }
+    a.format == b.format
+        && match a.format {
+            MacroBang(_) => a.def_site == b.def_site,
+            // Not sure what we want to do here
+            MacroAttribute(_) => unimplemented!(),
+            // For desugaring, we ignore the span since it seems to just duplicate the span of the
+            // caller which definitely won't be the same for two separate occurences.
+            CompilerDesugaring(_) => true,
+        }
 }
 
 // Searches the callsites of the first span until it finds one that is contained within the second
@@ -1545,7 +1552,9 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
     // Returns a snippet of code for the supplied definition.
     fn node_id_snippet(&self, node_id: NodeId) -> String {
         let source_map = self.tcx.sess.source_map();
-        source_map.span_to_snippet(self.tcx.hir().span(node_id)).unwrap()
+        source_map
+            .span_to_snippet(self.tcx.hir().span(node_id))
+            .unwrap()
     }
 
     // Check if the supplied expression is a placeholder variable. If it is, replace the supplied

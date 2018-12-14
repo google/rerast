@@ -110,9 +110,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::Vec;
 use syntax::ast::NodeId;
+use syntax::ext::quote::rt::Span;
 use syntax::source_map::FileLoader;
 use syntax::source_map::{self, SourceMap};
-use syntax::ext::quote::rt::Span;
 use syntax::symbol::Symbol;
 use syntax_pos::SyntaxContext;
 
@@ -223,14 +223,16 @@ const CODE_FOOTER: &str = stringify!(
 
 // This module is used to help us find the definitions for rerast types that we need.
 const RERAST_INTERNAL_MOD_NAME: &str = "__rerast_internal";
-const RERAST_INTERNAL: &str = stringify!(pub fn rerast_types(
-    _: Statements,
-    _: _ExprRuleMarker,
-    _: _PatternRuleMarker,
-    _: _TypeRuleMarker,
-    _: _TraitRefRuleMarker,
-) {
-});
+const RERAST_INTERNAL: &str = stringify!(
+    pub fn rerast_types(
+        _: Statements,
+        _: _ExprRuleMarker,
+        _: _PatternRuleMarker,
+        _: _TypeRuleMarker,
+        _: _TraitRefRuleMarker,
+    ) {
+    }
+);
 
 pub(crate) fn node_id_from_path(q_path: &hir::QPath) -> Option<NodeId> {
     use hir::def::Def::*;
@@ -618,7 +620,8 @@ mod tests {
                #![feature(box_patterns)]
                #![feature(slice_patterns)]
                #![feature(exclusive_range_pattern)]
-               "#.to_owned()
+               "#
+        .to_owned()
             + header1
             + "#[macro_use]\nmod common;\n"
             + header2;
@@ -630,8 +633,11 @@ mod tests {
             .arg("lib")
             .arg(CODE_FILE_NAME);
         let driver = RerastCompilerDriver::new(args);
-        let output =
-            driver.apply_rules_to_code(file_loader.clone(), rule_header + rule, Config::default())?;
+        let output = driver.apply_rules_to_code(
+            file_loader.clone(),
+            rule_header + rule,
+            Config::default(),
+        )?;
         let mut updated_files = output.updated_files(&file_loader)?;
         if let hash_map::Entry::Occupied(mut entry) =
             updated_files.entry(PathBuf::from(CODE_FILE_NAME))
@@ -1686,8 +1692,12 @@ mod tests {
             stringify!(
                 pub struct Foo(pub i32);
                 pub struct Bar(pub i32, pub i32);
-                pub fn get_foo_tuple() -> (Foo, i32) {(Foo(1), 2)}
-                pub fn get_bar() -> Bar {Bar(1, 2)}
+                pub fn get_foo_tuple() -> (Foo, i32) {
+                    (Foo(1), 2)
+                }
+                pub fn get_bar() -> Bar {
+                    Bar(1, 2)
+                }
             ),
             r#"fn r1(t: &(Foo, i32), b: Bar) {
                      replace!(&get_foo_tuple() => get_bar());
@@ -2047,7 +2057,8 @@ mod tests {
             extern crate foo;
 
 
-            // bar"#.to_owned()
+            // bar"#
+                .to_owned()
                 + "\n"
         );
     }

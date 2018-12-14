@@ -33,9 +33,9 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use syntax::source_map::{SourceMap, FileLoader, FilePathMapping};
 use syntax::ext::quote::rt::Span;
 use syntax::parse::{self, ParseSess};
+use syntax::source_map::{FileLoader, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax_pos::{BytePos, Pos, SyntaxContext};
 use CompilerInvocationInfo;
@@ -148,7 +148,12 @@ where
         let mut candidate = self.stack.pop().unwrap();
         candidate.hash = if candidate.children.is_empty() {
             // Leaf node. Get a token stream and hash its tokens.
-            let snippet = self.tcx.sess.source_map().span_to_snippet(expr.span).unwrap();
+            let snippet = self
+                .tcx
+                .sess
+                .source_map()
+                .span_to_snippet(expr.span)
+                .unwrap();
             let session = ParseSess::new(FilePathMapping::empty());
             let stream = parse::parse_stream_from_source_str(
                 syntax_pos::FileName::anon_source_code(&snippet),
@@ -511,10 +516,11 @@ impl<'a, 'gcx: 'a, 'placeholders> PlaceholderMatcher<'a, 'gcx, 'placeholders> {
                         &session,
                         None,
                     );
-                    if stream.eq_unspanned(&other_stream) && !self
-                        .used_placeholder_spans
-                        .iter()
-                        .any(|s| s.contains(other_span) || other_span.contains(*s))
+                    if stream.eq_unspanned(&other_stream)
+                        && !self
+                            .used_placeholder_spans
+                            .iter()
+                            .any(|s| s.contains(other_span) || other_span.contains(*s))
                     {
                         self.used_placeholder_spans.push(other_span);
                         placeholder.uses.push(other_span);
@@ -789,7 +795,8 @@ mod tests {
             &[invocation_info],
             changed_filename,
             original_file_contents,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(rule, expected_rule);
     }
 
