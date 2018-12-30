@@ -148,7 +148,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
 
     fn visit_item(&mut self, item: &'gcx hir::Item) {
         if let hir::ItemKind::Mod(_) = item.node {
-            if item.name == self.rules_mod_symbol {
+            if item.ident.name == self.rules_mod_symbol {
                 self.in_rules_module = true;
                 intravisit::walk_item(self, item);
                 self.in_rules_module = false;

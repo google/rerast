@@ -66,7 +66,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RerastDefinitionsFinder<'a, '
             intravisit::walk_item(self, item);
         } else {
             if let hir::ItemKind::Mod(_) = item.node {
-                if item.name == self.rerast_mod_symbol {
+                if item.ident.name == self.rerast_mod_symbol {
                     self.inside_rerast_mod = true;
                     intravisit::walk_item(self, item);
                     self.inside_rerast_mod = false;

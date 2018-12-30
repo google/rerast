@@ -226,7 +226,7 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
     fn visit_item(&mut self, item: &'gcx hir::Item) {
         if let hir::ItemKind::Mod(_) = item.node {
             // Avoid trying to find matches in the rules file.
-            if item.name == self.rule_mod_symbol {
+            if item.ident.name == self.rule_mod_symbol {
                 return;
             }
         }
