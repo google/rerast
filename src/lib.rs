@@ -580,6 +580,157 @@ mod tests {
     #[derive(Clone)]
     pub(crate) struct NullFileLoader;
 
+    struct TestBuilder {
+        common: String,
+        rule: String,
+        input: String,
+    }
+
+    impl TestBuilder {
+        fn new() -> TestBuilder {
+            TestBuilder {
+                common: String::new(),
+                rule: String::new(),
+                input: String::new(),
+            }
+        }
+
+        fn common(mut self, common: &str) -> TestBuilder {
+            self.common = common.to_owned();
+            self
+        }
+
+        fn rule(mut self, rule: &str) -> TestBuilder {
+            self.rule = rule.to_owned();
+            self
+        }
+
+        fn input(mut self, input: &str) -> TestBuilder {
+            self.input = input.to_owned();
+            self
+        }
+
+        fn expect(self, expected: &str) {
+            let updated_files = self.apply_rule_to_test_code();
+            let is_other_filename = |filename| {
+                filename != Path::new(CODE_FILE_NAME) && filename != Path::new("common.rs")
+            };
+            if updated_files.keys().any(is_other_filename) {
+                panic!(
+                    "Unexpected updates to other files: {:?}",
+                    updated_files.keys()
+                );
+            }
+            let new_code = updated_files
+                .get(Path::new(CODE_FILE_NAME))
+                .expect("File not updated. No match?");
+            if new_code != expected {
+                println!("result: {}", new_code);
+                println!("expect: {}", expected);
+            }
+            assert_eq!(new_code, expected);
+        }
+
+        fn maybe_apply_rule_to_test_code(self) -> Result<HashMap<PathBuf, String>, RerastErrors> {
+            let mut file_loader = InMemoryFileLoader::new(NullFileLoader);
+            file_loader.add_file("common.rs".to_owned(), self.common);
+            let header1 = r#"#![allow(unused_imports)]
+                         #![allow(unused_variables)]
+                         #![allow(unused_must_use)]
+                         "#;
+            let header2 = "use common::*;\n";
+            let code_header = r#"
+               #![feature(box_syntax)]
+               #![feature(box_patterns)]
+               #![feature(slice_patterns)]
+               #![feature(exclusive_range_pattern)]
+               "#
+            .to_owned()
+                + header1
+                + "#[macro_use]\nmod common;\n"
+                + header2;
+            let rule_header = header1.to_owned() + "use common;\n" + header2;
+            file_loader.add_file(CODE_FILE_NAME.to_owned(), code_header.clone() + &self.input);
+            let args = CompilerInvocationInfo::new()
+                .arg("rerast_test")
+                .arg("--crate-type")
+                .arg("lib")
+                .arg(CODE_FILE_NAME);
+            let driver = RerastCompilerDriver::new(args);
+            let output = driver.apply_rules_to_code(
+                file_loader.clone(),
+                rule_header + &self.rule,
+                Config::default(),
+            )?;
+            let mut updated_files = output.updated_files(&file_loader)?;
+            if let hash_map::Entry::Occupied(mut entry) =
+                updated_files.entry(PathBuf::from(CODE_FILE_NAME))
+            {
+                let contents = entry.get_mut();
+                assert!(contents.starts_with(&code_header));
+                *contents = contents[code_header.len()..].to_owned();
+            }
+            Ok(updated_files)
+        }
+
+        fn apply_rule_to_test_code(self) -> HashMap<PathBuf, String> {
+            match self.maybe_apply_rule_to_test_code() {
+                Ok(output) => output,
+                Err(errors) => {
+                    panic!("Got unexpected errors.\n{}\n", errors);
+                }
+            }
+        }
+
+        fn expect_no_match(self) {
+            let updated_files = self.apply_rule_to_test_code();
+            if !updated_files.is_empty() {
+                println!("Unexpected: {:?}", updated_files);
+            }
+            assert!(updated_files.is_empty());
+        }
+
+        fn expect_error(self, expected_message: &str, expected_snippet: &str) {
+            match self.maybe_apply_rule_to_test_code() {
+                Ok(result) => panic!("Expected error, got:\n{:?}", result),
+                Err(errors) => {
+                    let errors_vec: Vec<_> = errors.iter().collect();
+                    if errors_vec.len() > 1 {
+                        panic!(
+                            "Unexpectedly got multiple errors ({}).\n{}",
+                            errors_vec.len(),
+                            errors
+                        );
+                    }
+                    assert_eq!(expected_message, errors_vec[0].message);
+                    match errors_vec[0].file_lines {
+                        Some(Ok(ref file_lines)) => {
+                            assert_eq!(1, file_lines.lines.len());
+                            let line_info = &file_lines.lines[0];
+                            if let Some(line) = file_lines.file.get_line(line_info.line_index) {
+                                let snippet: String = line
+                                    .chars()
+                                    .skip(line_info.start_col.0)
+                                    .take(line_info.end_col.0 - line_info.start_col.0)
+                                    .collect();
+                                assert_eq!(expected_snippet, snippet);
+                            } else {
+                                panic!(
+                                    "Error reported on non-existent line {}",
+                                    line_info.line_index
+                                );
+                            }
+                        }
+                        Some(Err(ref error)) => {
+                            panic!("Expected error with file lines, but error: {:?}", error)
+                        }
+                        None => panic!("Expected error with lines, but got error without lines"),
+                    }
+                }
+            }
+        }
+    }
+
     impl FileLoader for NullFileLoader {
         fn file_exists(&self, _: &Path) -> bool {
             false
@@ -603,127 +754,20 @@ mod tests {
         }
     }
 
-    fn maybe_apply_rule_to_test_code(
-        common: &str,
-        rule: &str,
-        code: &str,
-    ) -> Result<HashMap<PathBuf, String>, RerastErrors> {
-        let mut file_loader = InMemoryFileLoader::new(NullFileLoader);
-        file_loader.add_file("common.rs".to_owned(), common.to_owned());
-        let header1 = r#"#![allow(unused_imports)]
-                         #![allow(unused_variables)]
-                         #![allow(unused_must_use)]
-                         "#;
-        let header2 = "use common::*;\n";
-        let code_header = r#"
-               #![feature(box_syntax)]
-               #![feature(box_patterns)]
-               #![feature(slice_patterns)]
-               #![feature(exclusive_range_pattern)]
-               "#
-        .to_owned()
-            + header1
-            + "#[macro_use]\nmod common;\n"
-            + header2;
-        let rule_header = header1.to_owned() + "use common;\n" + header2;
-        file_loader.add_file(CODE_FILE_NAME.to_owned(), code_header.clone() + code);
-        let args = CompilerInvocationInfo::new()
-            .arg("rerast_test")
-            .arg("--crate-type")
-            .arg("lib")
-            .arg(CODE_FILE_NAME);
-        let driver = RerastCompilerDriver::new(args);
-        let output = driver.apply_rules_to_code(
-            file_loader.clone(),
-            rule_header + rule,
-            Config::default(),
-        )?;
-        let mut updated_files = output.updated_files(&file_loader)?;
-        if let hash_map::Entry::Occupied(mut entry) =
-            updated_files.entry(PathBuf::from(CODE_FILE_NAME))
-        {
-            let contents = entry.get_mut();
-            assert!(contents.starts_with(&code_header));
-            *contents = contents[code_header.len()..].to_owned();
-        }
-        Ok(updated_files)
-    }
-
-    fn apply_rule_to_test_code(common: &str, rule: &str, code: &str) -> HashMap<PathBuf, String> {
-        match maybe_apply_rule_to_test_code(common, rule, code) {
-            Ok(output) => output,
-            Err(errors) => {
-                panic!("Got unexpected errors.\n{}\n", errors);
-            }
-        }
-    }
-
     fn check(common: &str, rule: &str, input: &str, expected: &str) {
-        let updated_files = apply_rule_to_test_code(common, &rule.to_string(), input);
-        let is_other_filename =
-            |filename| filename != Path::new(CODE_FILE_NAME) && filename != Path::new("common.rs");
-        if updated_files.keys().any(is_other_filename) {
-            panic!(
-                "Unexpected updates to other files: {:?}",
-                updated_files.keys()
-            );
-        }
-        let new_code = updated_files
-            .get(Path::new(CODE_FILE_NAME))
-            .expect("File not updated. No match?");
-        if new_code != expected {
-            println!("result: {}", new_code);
-            println!("expect: {}", expected);
-        }
-        assert_eq!(new_code, expected);
+        TestBuilder::new()
+            .common(common)
+            .rule(rule)
+            .input(input)
+            .expect(expected);
     }
 
     fn check_no_match(common: &str, rule: &str, input: &str) {
-        let updated_files = apply_rule_to_test_code(common, rule, input);
-        if !updated_files.is_empty() {
-            println!("Unexpected: {:?}", updated_files);
-        }
-        assert!(updated_files.is_empty());
-    }
-
-    fn check_error(rule: &str, expected_message: &str, expected_snippet: &str) {
-        match maybe_apply_rule_to_test_code("", rule, "") {
-            Ok(result) => panic!("Expected error, got:\n{:?}", result),
-            Err(errors) => {
-                let errors_vec: Vec<_> = errors.iter().collect();
-                if errors_vec.len() > 1 {
-                    panic!(
-                        "Unexpectedly got multiple errors ({}).\n{}",
-                        errors_vec.len(),
-                        errors
-                    );
-                }
-                assert_eq!(expected_message, errors_vec[0].message);
-                match errors_vec[0].file_lines {
-                    Some(Ok(ref file_lines)) => {
-                        assert_eq!(1, file_lines.lines.len());
-                        let line_info = &file_lines.lines[0];
-                        if let Some(line) = file_lines.file.get_line(line_info.line_index) {
-                            let snippet: String = line
-                                .chars()
-                                .skip(line_info.start_col.0)
-                                .take(line_info.end_col.0 - line_info.start_col.0)
-                                .collect();
-                            assert_eq!(expected_snippet, snippet);
-                        } else {
-                            panic!(
-                                "Error reported on non-existent line {}",
-                                line_info.line_index
-                            );
-                        }
-                    }
-                    Some(Err(ref error)) => {
-                        panic!("Expected error with file lines, but error: {:?}", error)
-                    }
-                    None => panic!("Expected error with lines, but got error without lines"),
-                }
-            }
-        }
+        TestBuilder::new()
+            .common(common)
+            .rule(rule)
+            .input(input)
+            .expect_no_match();
     }
 
     // Check that we can match and replace a binary operand with placeholders on both sides.
@@ -911,8 +955,9 @@ mod tests {
     #[test]
     #[ignore]
     fn error_multiple_statement_placeholders() {
-        check_error(
-            r#"use rerast;
+        TestBuilder::new()
+            .rule(
+                r#"use rerast;
                  fn r1(s1: rerast::Statements, s2: rerast::Statements) {
                      replace!(
                          loop {
@@ -923,9 +968,11 @@ mod tests {
                              s1();
                              s2();
                      });}"#,
-            "Multiple statement placeholders within a block is not supported",
-            "",
-        );
+            )
+            .expect_error(
+                "Multiple statement placeholders within a block is not supported",
+                "",
+            );
     }
 
     // Replace a call to a function.
@@ -1664,25 +1711,27 @@ mod tests {
 
     #[test]
     fn replace_trait_ref_with_non_trait_type() {
-        check_error(
-            r#"pub trait T1 {}
+        TestBuilder::new()
+            .rule(
+                r#"pub trait T1 {}
                pub struct T2 {}
                fn r() {replace_trait_ref!(T1 => T2);}"#,
-            "replace_trait_ref! requires a trait",
-            "T2",
-        );
+            )
+            .expect_error("replace_trait_ref! requires a trait", "T2");
     }
 
     #[test]
     fn no_match_trait_with_same_name() {
-        check_no_match(
-            "pub trait T1 {} pub trait T2 {}",
-            "fn r() {replace_trait_ref!(T1 => T2);}",
-            r#"mod foo {
+        TestBuilder::new()
+            .common("pub trait T1 {} pub trait T2 {}")
+            .rule("fn r() {replace_trait_ref!(T1 => T2);}")
+            .input(
+                r#"mod foo {
                    trait T1 {}
                    fn bar(_: Box<T1>) {}
                }"#,
-        );
+            )
+            .expect_no_match();
     }
 
     // Tests matching of tuple and reference patterns
@@ -1833,22 +1882,24 @@ mod tests {
     // Verify that using a placeholder multiple times in a search pattern is an error.
     #[test]
     fn error_multiple_bindings() {
-        check_error(
-            "fn r1(a: i32) {replace!(a + a => 42);}",
-            "Placeholder is bound multiple times. This is not currently permitted.",
-            "a",
-        );
+        TestBuilder::new()
+            .rule("fn r1(a: i32) {replace!(a + a => 42);}")
+            .expect_error(
+                "Placeholder is bound multiple times. This is not currently permitted.",
+                "a",
+            );
     }
 
     // Verify that using a placeholder in a replacement pattern that was never used in the search
     // pattern is an error.
     #[test]
     fn error_unbound_placeholder() {
-        check_error(
-            "fn r1(a: i32) {replace!(42 => a);}",
-            "Placeholder used in replacement pattern, but never bound.",
-            "a",
-        );
+        TestBuilder::new()
+            .rule("fn r1(a: i32) {replace!(42 => a);}")
+            .expect_error(
+                "Placeholder used in replacement pattern, but never bound.",
+                "a",
+            );
     }
 
     // Check that when part of the matched AST comes from a macro (the +) and part comes from the
