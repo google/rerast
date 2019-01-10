@@ -559,7 +559,7 @@ impl RerastCompilerDriver {
             code_path.with_file_name(RERAST_INTERNAL_MOD_NAME.to_owned() + ".rs"),
             rerast_macros::_RERAST_MACROS_SRC
                 .replace(r#"include_str!("lib.rs")"#, r#""""#)
-                .replace("$crate", &("::".to_owned() + RERAST_INTERNAL_MOD_NAME))
+                .replace("$crate", &("crate::".to_owned() + RERAST_INTERNAL_MOD_NAME))
                 + RERAST_INTERNAL,
         );
         let code_with_footer = file_loader.read_file(&code_path)? + CODE_FOOTER;
@@ -584,6 +584,7 @@ mod tests {
         common: String,
         rule: String,
         input: String,
+        edition: String,
     }
 
     impl TestBuilder {
@@ -592,6 +593,7 @@ mod tests {
                 common: String::new(),
                 rule: String::new(),
                 input: String::new(),
+                edition: "2018".to_owned(),
             }
         }
 
@@ -607,6 +609,11 @@ mod tests {
 
         fn input(mut self, input: &str) -> TestBuilder {
             self.input = input.to_owned();
+            self
+        }
+
+        fn edition(mut self, edition: &str) -> TestBuilder {
+            self.edition = edition.to_owned();
             self
         }
 
@@ -638,7 +645,7 @@ mod tests {
                          #![allow(unused_variables)]
                          #![allow(unused_must_use)]
                          "#;
-            let header2 = "use common::*;\n";
+            let header2 = "use crate::common::*;\n";
             let code_header = r#"
                #![feature(box_syntax)]
                #![feature(box_patterns)]
@@ -649,12 +656,14 @@ mod tests {
                 + header1
                 + "#[macro_use]\nmod common;\n"
                 + header2;
-            let rule_header = header1.to_owned() + "use common;\n" + header2;
+            let rule_header = header1.to_owned() + "use crate::common;\n" + header2;
             file_loader.add_file(CODE_FILE_NAME.to_owned(), code_header.clone() + &self.input);
             let args = CompilerInvocationInfo::new()
                 .arg("rerast_test")
                 .arg("--crate-type")
                 .arg("lib")
+                .arg("--edition")
+                .arg(self.edition)
                 .arg(CODE_FILE_NAME);
             let driver = RerastCompilerDriver::new(args);
             let output = driver.apply_rules_to_code(
@@ -773,12 +782,20 @@ mod tests {
     // Check that we can match and replace a binary operand with placeholders on both sides.
     #[test]
     fn addition_swap_order() {
-        check(
-            "",
-            "fn r(x: i64, y: i64) {replace!(x + y => y + x);}",
-            "fn bar() -> i64 {return (41 + 2) - (9 + 1);}",
-            "fn bar() -> i64 {return (2 + 41) - (1 + 9);}",
-        );
+        TestBuilder::new()
+            .rule("fn r(x: i64, y: i64) {replace!(x + y => y + x);}")
+            .input("fn bar() -> i64 {return (41 + 2) - (9 + 1);}")
+            .expect("fn bar() -> i64 {return (2 + 41) - (1 + 9);}");
+    }
+
+    // Make sure things still work on 2015 edition.
+    #[test]
+    fn addition_swap_order_2015() {
+        TestBuilder::new()
+            .edition("2015")
+            .rule("fn r(x: i64, y: i64) {replace!(x + y => y + x);}")
+            .input("fn bar() -> i64 {return (41 + 2) - (9 + 1);}")
+            .expect("fn bar() -> i64 {return (2 + 41) - (1 + 9);}");
     }
 
     // Check that we can match an expression that's more than just a literal against a placeholder
@@ -1157,15 +1174,15 @@ mod tests {
             r#"pub struct Size { pub w: i32, pub h: i32 }
                impl Size { pub fn area(&self) -> i32 { self.w * self.h }}
                pub fn do_stuff(_: i32) {}"#,
-            r#"use common::*;
+            r#"use crate::common::*;
                  fn bar(op: Option<Size>, d: i32) {
                    replace!(if let Some(Size {w, h}) = op {w * h} else {d}
                        => op.map(|p| p.area()).unwrap_or_else(|| d));}"#,
-            r#"use common::*;
+            r#"use crate::common::*;
                  fn f1(sz: Option<Size>) {
                      do_stuff(if let Some(Size {w: w1, h: h1}) = sz {w1 * h1} else {42});
                  }"#,
-            r#"use common::*;
+            r#"use crate::common::*;
                  fn f1(sz: Option<Size>) {
                      do_stuff(sz.map(|p| p.area()).unwrap_or_else(|| 42));
                  }"#,
@@ -1179,15 +1196,15 @@ mod tests {
             r#"pub struct Size { pub w: i32, pub h: i32 }
                impl Size { pub fn area(&self) -> i32 { self.w * self.h }}
                pub fn do_stuff(_: i32) {}"#,
-            r#"use common::*;
+            r#"use crate::common::*;
                  fn bar(op: Option<Size>, d: i32) {
                    replace!(if let Some(Size {w, h}) = op {w * h} else {d}
                        => op.map(|p| p.area()).unwrap_or_else(|| d));}"#,
-            r#"use common::*;
+            r#"use crate::common::*;
                  fn f1(sz: Option<Size>) {
                      do_stuff(if let Some(Size {h: h1, w: w1}) = sz {w1 * h1} else {42});
                  }"#,
-            r#"use common::*;
+            r#"use crate::common::*;
                  fn f1(sz: Option<Size>) {
                      do_stuff(sz.map(|p| p.area()).unwrap_or_else(|| 42));
                  }"#,
@@ -1308,47 +1325,55 @@ mod tests {
     // semicolons that follow them and the workaround may no longer be necessary.
     #[test]
     fn match_macro() {
-        check(
-            "pub fn foo() -> Result<i32, i32> {Ok(42)}",
-            "use std::fmt::Debug; \
+        TestBuilder::new()
+            .edition("2015") // try is a keyword in 2018
+            .common("pub fn foo() -> Result<i32, i32> {Ok(42)}")
+            .rule(
+                "use std::fmt::Debug; \
                  fn bar<T, E: Debug>(r: Result<T, E>) -> Result<T, E> {\
                      replace!(try!(r) => r.unwrap());
                      unreachable!();
                  }",
-            "fn f1() -> Result<i32, i32> {try!(foo()); Ok(1)}",
-            "fn f1() -> Result<i32, i32> {foo().unwrap(); Ok(1)}",
-        )
+            )
+            .input("fn f1() -> Result<i32, i32> {try!(foo()); Ok(1)}")
+            .expect("fn f1() -> Result<i32, i32> {foo().unwrap(); Ok(1)}");
     }
 
     // Check that when a placeholder matches an expression that is the result of a macro expansion,
     // we correctly take the call-site of that macro.
     #[test]
     fn placeholder_takes_macro_invocation() {
-        check(
-            r#"pub fn get_result() -> Result<i32, i32> {Ok(42)}
+        TestBuilder::new()
+            .edition("2015")
+            .common(
+                r#"pub fn get_result() -> Result<i32, i32> {Ok(42)}
                  pub fn foo(_: i32) {}
                  pub fn bar(_: i32) {}"#,
-            "fn rule(a: i32) {replace!(foo(a) => bar(a));}",
-            "fn f1() -> Result<i32, i32> {foo(try!(get_result())); Ok(1)}",
-            "fn f1() -> Result<i32, i32> {bar(try!(get_result())); Ok(1)}",
-        );
+            )
+            .rule("fn rule(a: i32) {replace!(foo(a) => bar(a));}")
+            .input("fn f1() -> Result<i32, i32> {foo(try!(get_result())); Ok(1)}")
+            .expect("fn f1() -> Result<i32, i32> {bar(try!(get_result())); Ok(1)}");
     }
 
     // Check that we can match a macro invocation that contains a placeholder that is also a macro
     // invocation.
     #[test]
     fn macro_placeholder_within_matched_macro() {
-        check(
-            r#"#[macro_export]
+        TestBuilder::new()
+            .edition("2015")
+            .common(
+                r#"#[macro_export]
                  macro_rules! add {($e1:expr, $e2:expr) => {$e1 + $e2}}
                  pub fn foo() -> Result<i32, i32> {Ok(41)}"#,
-            r#"use std::ops::Add;
+            )
+            .rule(
+                r#"use std::ops::Add;
                  fn rule<T: Add>(a: T, b: T) {
                      replace!(add!(a, b) => a + b);
                  }"#,
-            "fn f1() -> Result<i32, i32> {Ok(add!(1, try!(foo())))}",
-            "fn f1() -> Result<i32, i32> {Ok(1 + try!(foo()))}",
-        );
+            )
+            .input("fn f1() -> Result<i32, i32> {Ok(add!(1, try!(foo())))}")
+            .expect("fn f1() -> Result<i32, i32> {Ok(1 + try!(foo()))}");
     }
 
     // Check that comments before and after a placeholder are preserved
@@ -1586,33 +1611,59 @@ mod tests {
     // Checks matching of ?. Also checks that the replacement can be a macro invocation.
     #[test]
     fn match_question_mark() {
-        check(
-            "pub fn get_result() -> Result<i32, i32> {Ok(42)}",
-            r#"fn r<T, E>(x: Result<T, E>) -> Result<T, E> {
+        TestBuilder::new()
+            .edition("2015")
+            .common("pub fn get_result() -> Result<i32, i32> {Ok(42)}")
+            .rule(
+                r#"fn r<T, E>(x: Result<T, E>) -> Result<T, E> {
                      replace!(x? => try!(x));
                      unreachable!();
                  }"#,
-            "fn f1() -> Result<i32, i32> {get_result()?; Ok(1)}",
-            "fn f1() -> Result<i32, i32> {try!(get_result()); Ok(1)}",
-        );
+            )
+            .input("fn f1() -> Result<i32, i32> {get_result()?; Ok(1)}")
+            .expect("fn f1() -> Result<i32, i32> {try!(get_result()); Ok(1)}");
     }
 
     #[test]
-    fn match_crate_root_reference() {
-        check(
-            "",
-            "fn r() {replace!(::foo::bar() => ::foo::bar2());}",
-            r#"pub mod foo {
+    fn match_crate_root_reference_2015() {
+        TestBuilder::new()
+            .edition("2015")
+            .rule("fn r() {replace!(::foo::bar() => ::foo::bar2());}")
+            .input(
+                r#"pub mod foo {
                    pub fn bar() {}
                    pub fn bar2() {}
                  }
                  fn f1() {::foo::bar();}"#,
-            r#"pub mod foo {
+            )
+            .expect(
+                r#"pub mod foo {
                    pub fn bar() {}
                    pub fn bar2() {}
                  }
                  fn f1() {::foo::bar2();}"#,
-        );
+            );
+    }
+
+    #[test]
+    fn match_crate_root_reference_2018() {
+        TestBuilder::new()
+            .edition("2018")
+            .rule("fn r() {replace!(crate::foo::bar() => crate::foo::bar2());}")
+            .input(
+                r#"pub mod foo {
+                   pub fn bar() {}
+                   pub fn bar2() {}
+                 }
+                 fn f1() {crate::foo::bar();}"#,
+            )
+            .expect(
+                r#"pub mod foo {
+                   pub fn bar() {}
+                   pub fn bar2() {}
+                 }
+                 fn f1() {crate::foo::bar2();}"#,
+            );
     }
 
     #[test]
@@ -1861,7 +1912,7 @@ mod tests {
     fn rule_in_nested_module() {
         check(
             "pub fn foo(_: i32) {}",
-            "mod s1 {use common::*; fn r1() {replace!(foo(1) => foo(2));}}",
+            "mod s1 {use crate::common::*; fn r1() {replace!(foo(1) => foo(2));}}",
             "fn f1() {foo(1);}",
             "fn f1() {foo(2);}",
         );
