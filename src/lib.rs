@@ -71,11 +71,9 @@
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 
-extern crate colored;
-extern crate diff;
 extern crate getopts;
-extern crate itertools;
-extern crate rerast_macros;
+
+use rerast_macros;
 extern crate rustc;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
@@ -149,7 +147,7 @@ impl CompilerInvocationInfo {
         self
     }
 
-    fn args_iter(&self) -> std::slice::Iter<String> {
+    fn args_iter(&self) -> std::slice::Iter<'_, String> {
         self.args.iter()
     }
 
@@ -163,8 +161,8 @@ impl CompilerInvocationInfo {
 
     pub(crate) fn run_compiler<'a>(
         &self,
-        compiler_calls: Box<CompilerCalls<'a> + rustc_data_structures::sync::Send>,
-        file_loader: Option<Box<FileLoader + Send + Sync + 'static>>,
+        compiler_calls: Box<dyn CompilerCalls<'a> + rustc_data_structures::sync::Send>,
+        file_loader: Option<Box<dyn FileLoader + Send + Sync + 'static>>,
     ) {
         for (k, v) in &self.env {
             std::env::set_var(k, v);
@@ -317,7 +315,7 @@ impl RerastOutput {
         }
     }
 
-    pub fn updated_files(self, file_loader: &FileLoader) -> io::Result<HashMap<PathBuf, String>> {
+    pub fn updated_files(self, file_loader: &dyn FileLoader) -> io::Result<HashMap<PathBuf, String>> {
         self.file_relative_substitutions.updated_files(file_loader)
     }
 
@@ -448,7 +446,7 @@ fn rustup_sysroot() -> String {
 }
 
 fn run_compiler(
-    file_loader: Option<Box<FileLoader + Send + Sync + 'static>>,
+    file_loader: Option<Box<dyn FileLoader + Send + Sync + 'static>>,
     invocation_info: &CompilerInvocationInfo,
     config: Config,
 ) -> Result<RerastOutput, RerastErrors> {

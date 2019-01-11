@@ -53,7 +53,7 @@ pub struct RerastError {
 }
 
 impl fmt::Display for RerastError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "error: {}", self.message)?;
         match self.file_lines {
             Some(Ok(ref file_lines)) => {
@@ -123,13 +123,13 @@ impl std::ops::Index<usize> for RerastErrors {
 }
 
 impl fmt::Debug for RerastErrors {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
     }
 }
 
 impl fmt::Display for RerastErrors {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for error in &self.0 {
             write!(f, "{}\n", error)?;
         }

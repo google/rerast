@@ -20,7 +20,7 @@ use syntax::ast::NodeId;
 use syntax::symbol::Symbol;
 
 #[derive(Debug)]
-pub(crate) struct Rule<'gcx, T: StartMatch + 'gcx> {
+pub(crate) struct Rule<'gcx, T: StartMatch> {
     pub(crate) search: &'gcx T,
     pub(crate) replace: &'gcx T,
     // The method in which the rule is defined.

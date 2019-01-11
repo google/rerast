@@ -1,4 +1,4 @@
-extern crate assert_cli;
+use assert_cli;
 
 fn cargo_rerast(crate_root: &str) -> assert_cli::Assert {
     // We can't use Assert.current_dir, because then Assert::cargo_binary doesn't work, instead we

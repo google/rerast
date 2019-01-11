@@ -43,7 +43,7 @@ impl<'a> Chunk<'a> {
 }
 
 impl<'a> fmt::Display for Chunk<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "{}",

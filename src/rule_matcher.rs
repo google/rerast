@@ -1305,7 +1305,7 @@ impl<'r, 'gcx> Matches<'r, 'gcx> {
 }
 
 #[derive(Debug)]
-struct Match<'r, 'gcx: 'r, T: StartMatch + 'gcx> {
+struct Match<'r, 'gcx: 'r, T: StartMatch> {
     rule: &'r Rule<'gcx, T>,
     node: &'gcx T,
     // Parent of the patched expression if the parent is also an expression. Used to determine if we
@@ -1538,7 +1538,7 @@ fn all_expansions_equal(rule_span: Span, code_span: Span) -> bool {
 
 // Visits the replacement AST looking for variables that need to be replaced with their bound values
 // from the matched source then recording the spans for said replacement.
-struct ReplacementVisitor<'r, 'a: 'r, 'gcx: 'a, T: StartMatch + 'gcx> {
+struct ReplacementVisitor<'r, 'a: 'r, 'gcx: 'a, T: StartMatch> {
     tcx: TyCtxt<'a, 'gcx, 'gcx>,
     result: Vec<CodeSubstitution<Span>>,
     current_match: &'r Match<'r, 'gcx, T>,

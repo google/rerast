@@ -18,12 +18,12 @@
 
 #[macro_use]
 extern crate clap;
-extern crate colored;
+use colored;
 #[macro_use]
 extern crate failure;
-extern crate itertools;
-extern crate json;
-extern crate rerast;
+
+use json;
+use rerast;
 extern crate syntax;
 
 use clap::ArgMatches;
@@ -96,7 +96,7 @@ fn read_file_as_string(path: &Path) -> Result<String, Error> {
 }
 
 fn get_compiler_invocation_infos_for_local_package(
-    matches: &ArgMatches,
+    matches: &ArgMatches<'_>,
 ) -> Result<Vec<CompilerInvocationInfo>, Error> {
     use std::str;
     clean_local_targets()?;
@@ -178,7 +178,7 @@ enum Action {
 }
 
 impl Action {
-    fn from_matches(matches: &ArgMatches) -> Result<Action, Error> {
+    fn from_matches(matches: &ArgMatches<'_>) -> Result<Action, Error> {
         let mut actions = Vec::new();
         if matches.is_present("diff") {
             actions.push(Action::Diff)
@@ -238,7 +238,7 @@ impl Action {
     }
 }
 
-fn get_replacement_kind_and_arg(matches: &ArgMatches) -> Result<(&'static str, String), Error> {
+fn get_replacement_kind_and_arg(matches: &ArgMatches<'_>) -> Result<(&'static str, String), Error> {
     let mut result = Vec::new();
     if let Some(s) = matches.value_of("search") {
         result.push(("replace", s.to_owned()));
