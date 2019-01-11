@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use super::node_id_from_path;
-use errors::ErrorWithSpan;
-use rule_finder::StartMatch;
-use rules::Rule;
+use crate::errors::ErrorWithSpan;
+use crate::rule_finder::StartMatch;
+use crate::rules::Rule;
 use rustc::hir::{self, intravisit};
 use rustc::ty::TyCtxt;
 use std::collections::HashSet;

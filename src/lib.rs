@@ -93,12 +93,12 @@ mod rule_matcher;
 mod rules;
 mod validation;
 
-use code_substitution::FileRelativeSubstitutions;
-use definitions::{RerastDefinitions, RerastDefinitionsFinder};
-use errors::RerastErrors;
-use file_loader::InMemoryFileLoader;
-use rule_finder::StartMatch;
-use rules::Rules;
+use crate::code_substitution::FileRelativeSubstitutions;
+use crate::definitions::{RerastDefinitions, RerastDefinitionsFinder};
+use crate::errors::RerastErrors;
+use crate::file_loader::InMemoryFileLoader;
+use crate::rule_finder::StartMatch;
+use crate::rules::Rules;
 use rustc::hir::{self, intravisit};
 use rustc::session::Session;
 use rustc::ty::TyCtxt;
@@ -235,7 +235,7 @@ const RERAST_INTERNAL: &str = stringify!(
 );
 
 pub(crate) fn node_id_from_path(q_path: &hir::QPath) -> Option<NodeId> {
-    use hir::def::Def::*;
+    use crate::hir::def::Def::*;
     if let hir::QPath::Resolved(None, ref path) = *q_path {
         match path.def {
             Local(node_id) | Upvar(node_id, _, _) => Some(node_id),

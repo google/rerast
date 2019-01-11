@@ -260,7 +260,7 @@ impl FileRelativeSubstitutions {
         let mut updated_files = HashMap::new();
         for (filename, substitutions) in &self.substitutions_by_filename {
             let source = file_loader.read_file(&filename)?;
-            let mut output = apply_substitutions(
+            let output = apply_substitutions(
                 substitutions,
                 SourceChunk::new(&source, syntax_pos::BytePos(0)),
             );

@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use super::DeclaredNamesFinder;
-use definitions::RerastDefinitions;
-use errors::ErrorWithSpan;
-use rule_matcher::{Matchable, OperatorPrecedence};
-use rules::{Rule, Rules};
+use crate::definitions::RerastDefinitions;
+use crate::errors::ErrorWithSpan;
+use crate::rule_matcher::{Matchable, OperatorPrecedence};
+use crate::rules::{Rule, Rules};
 use rustc::hir::{self, intravisit};
 use rustc::ty::{self, TyCtxt};
 use std::marker;
@@ -165,7 +165,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
         if !self.in_rules_module {
             return;
         }
-        use hir::ExprKind;
+        use crate::hir::ExprKind;
         if let ExprKind::Match(ref match_expr, ref arms, _) = expr.node {
             if let ExprKind::MethodCall(ref _name, ref _tys, ref args) = match_expr.node {
                 if let Some(body_id) = self.body_id {

@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use super::node_id_from_path;
-use code_substitution::CodeSubstitution;
-use definitions::RerastDefinitions;
-use rule_finder::StartMatch;
-use rules::{Rule, Rules};
+use crate::code_substitution::CodeSubstitution;
+use crate::definitions::RerastDefinitions;
+use crate::rule_finder::StartMatch;
+use crate::rules::{Rule, Rules};
 use rustc::hir::{self, intravisit};
 use rustc::infer::{self, InferCtxt};
 use rustc::traits::ObligationCause;
@@ -33,7 +33,7 @@ use syntax::ptr::P;
 use syntax::source_map::{self, Spanned};
 use syntax::symbol::Symbol;
 use syntax_pos::SpanSnippetError;
-use Config;
+use crate::Config;
 
 #[macro_export]
 macro_rules! debug {
@@ -695,7 +695,7 @@ impl Matchable for hir::TyKind {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use hir::TyKind;
+        use crate::hir::TyKind;
         match (self, code) {
             (&TyKind::Slice(ref p), &TyKind::Slice(ref c))
             | (&TyKind::Array(ref p, _), &TyKind::Array(ref c, _)) => p.attempt_match(state, c),
@@ -846,7 +846,7 @@ impl Matchable for hir::Pat {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use hir::PatKind::*;
+        use crate::hir::PatKind::*;
         match (&self.node, &code.node) {
             (&Wild, &Wild) => true,
             (&Binding(p_mode, p_node_id, ref _p_name, ref p_pat), _) => {
@@ -1016,7 +1016,7 @@ impl Matchable for hir::QPath {
     ) -> bool {
         // TODO: Consider using TypeckTables::qpath_def, then passing the two defs to the match
         // currently for hir::Path below.
-        use hir::QPath::*;
+        use crate::hir::QPath::*;
         match (self, code) {
             (&Resolved(ref p_ty, ref p_path), &Resolved(ref c_ty, ref c_path)) => {
                 p_ty.attempt_match(state, c_ty) && p_path.attempt_match(state, c_path)
@@ -1080,7 +1080,7 @@ impl Matchable for hir::DeclKind {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use hir::DeclKind;
+        use crate::hir::DeclKind;
         match (self, code) {
             (&DeclKind::Local(ref p), &DeclKind::Local(ref c)) => p.attempt_match(state, c),
             (&DeclKind::Item(ref p), &DeclKind::Item(ref c)) => {
@@ -1127,7 +1127,7 @@ impl Matchable for hir::ItemKind {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use hir::ItemKind;
+        use crate::hir::ItemKind;
         match (self, code) {
             (
                 &ItemKind::Static(ref p_ty, p_mut, ref p_body_id),
@@ -1171,7 +1171,7 @@ impl Matchable for hir::Visibility {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        use hir::VisibilityKind::*;
+        use crate::hir::VisibilityKind::*;
         match (&self.node, &code.node) {
             (
                 Restricted {
@@ -1505,7 +1505,7 @@ fn get_original_spans(search_span: Span, code_span: Span) -> Option<(Span, Span)
 }
 
 fn is_same_expansion(a: &source_map::ExpnInfo, b: &source_map::ExpnInfo) -> bool {
-    use source_map::ExpnFormat::*;
+    use crate::source_map::ExpnFormat::*;
     a.format == b.format
         && match a.format {
             MacroBang(_) => a.def_site == b.def_site,

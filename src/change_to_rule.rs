@@ -21,8 +21,8 @@ extern crate rustc_driver;
 extern crate syntax;
 extern crate syntax_pos;
 
-use errors::RerastErrors;
-use file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
+use crate::errors::RerastErrors;
+use crate::file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
 use rustc::hir::{self, intravisit};
 use rustc::ty::{TyCtxt, TyKind};
 use std::cell::RefCell;
@@ -38,7 +38,7 @@ use syntax::parse::{self, ParseSess};
 use syntax::source_map::{FileLoader, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax_pos::{BytePos, Pos, SyntaxContext};
-use CompilerInvocationInfo;
+use crate::CompilerInvocationInfo;
 
 struct PlaceholderCandidate<T> {
     hash: u64,
@@ -577,7 +577,7 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReferencedPathsFinder<'a, 'gcx>
     }
 
     fn visit_path(&mut self, path: &'gcx hir::Path, _: hir::HirId) {
-        use hir::def::Def;
+        use crate::hir::def::Def;
         match path.def {
             Def::Mod(_)
             | Def::Struct(_)
@@ -699,7 +699,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
         let invocation_info = compiler_invocations[args_index]
             .clone()
             .arg("--sysroot")
-            .arg(::rustup_sysroot())
+            .arg(crate::rustup_sysroot())
             .arg("--allow")
             .arg("dead_code");
         invocation_info.run_compiler(compiler_calls, Some(box file_loader.clone()));
@@ -768,7 +768,7 @@ fn common(left: &str, right: &str) -> Option<ChangedSpan> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tests::NullFileLoader;
+    use crate::tests::NullFileLoader;
 
     fn check_determine_rule_with_file_loader(
         file_loader: &InMemoryFileLoader<NullFileLoader>,
