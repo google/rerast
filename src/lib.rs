@@ -849,9 +849,9 @@ mod tests {
         check(
             "",
             r#"#[allow(while_true)]
-                 fn bar() {replace!(loop {break;} => while true {break;});}"#,
+                 fn bar() {replace!(loop {break;} => while true {});}"#,
             "#[allow(while_true)]\n fn f1() {loop {break;}}",
-            "#[allow(while_true)]\n fn f1() {while true {break;}}",
+            "#[allow(while_true)]\n fn f1() {while true {}}",
         );
     }
 
