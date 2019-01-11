@@ -68,6 +68,7 @@ macro_rules! replace_type {
     };
 }
 
+/// Replaces references to a trait with references to a different trait.
 #[macro_export]
 macro_rules! replace_trait_ref {
     ($a:ty => $b:ty) => {
