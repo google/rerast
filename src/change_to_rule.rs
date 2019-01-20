@@ -23,6 +23,7 @@ extern crate syntax_pos;
 
 use crate::errors::RerastErrors;
 use crate::file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
+use crate::CompilerInvocationInfo;
 use rustc::hir::{self, intravisit};
 use rustc::ty::{TyCtxt, TyKind};
 use std::cell::RefCell;
@@ -38,7 +39,6 @@ use syntax::parse::{self, ParseSess};
 use syntax::source_map::{FileLoader, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax_pos::{BytePos, Pos, SyntaxContext};
-use crate::CompilerInvocationInfo;
 
 struct PlaceholderCandidate<T> {
     hash: u64,
@@ -83,9 +83,7 @@ fn hash_token_stream(stream: &TokenStream, hasher: &mut DefaultHasher) {
                 // different tree structures will likely get different hashes.
                 42.hash(hasher)
             }
-            TokenTree::Delimited(_span, _delimited, tts) => {
-                hash_token_stream(&tts.stream(), hasher)
-            }
+            TokenTree::Delimited(_span, _delimited, tts) => hash_token_stream(&tts, hasher),
         }
     }
 }
@@ -678,7 +676,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
         None => {
             return Err(RerastErrors::with_message(
                 "Nothing appears to have changed",
-            ))
+            ));
         }
     };
     let find_rules_state = Rc::new(RefCell::new(FindRulesState {

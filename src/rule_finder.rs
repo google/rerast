@@ -231,7 +231,7 @@ impl StartMatch for hir::Expr {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::StmtKind::Semi(ref addr_expr, _) = block.stmts[0].node {
+            if let hir::StmtKind::Semi(ref addr_expr) = block.stmts[0].node {
                 if let hir::ExprKind::AddrOf(_, ref expr) = addr_expr.node {
                     return Ok(&**expr);
                 }
@@ -262,12 +262,10 @@ impl StartMatch for hir::Ty {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::StmtKind::Decl(ref decl, _) = block.stmts[0].node {
-                if let hir::DeclKind::Local(ref local) = decl.node {
-                    if let Some(ref ref_ty) = local.ty {
-                        if let hir::TyKind::Rptr(_, ref mut_ty) = ref_ty.node {
-                            return Ok(&*mut_ty.ty);
-                        }
+            if let hir::StmtKind::Local(ref local) = block.stmts[0].node {
+                if let Some(ref ref_ty) = local.ty {
+                    if let hir::TyKind::Rptr(_, ref mut_ty) = ref_ty.node {
+                        return Ok(&*mut_ty.ty);
                     }
                 }
             }
@@ -333,7 +331,7 @@ impl StartMatch for hir::Pat {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::StmtKind::Semi(ref expr, _) = block.stmts[0].node {
+            if let hir::StmtKind::Semi(ref expr) = block.stmts[0].node {
                 if let hir::ExprKind::Match(_, ref arms, _) = expr.node {
                     // The user's pattern is wrapped in Some(x) in order to make all patterns
                     // refutable. Otherwise we'd need the user to use a different macro for

@@ -256,7 +256,10 @@ impl FileRelativeSubstitutions {
         }
     }
 
-    pub fn updated_files(&self, file_loader: &dyn FileLoader) -> io::Result<HashMap<PathBuf, String>> {
+    pub fn updated_files(
+        &self,
+        file_loader: &dyn FileLoader,
+    ) -> io::Result<HashMap<PathBuf, String>> {
         let mut updated_files = HashMap::new();
         for (filename, substitutions) in &self.substitutions_by_filename {
             let source = file_loader.read_file(&filename)?;

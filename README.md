@@ -156,6 +156,9 @@ See the [Rerast Cookbook](COOKBOOK.md) for more examples.
 * [Users group](https://groups.google.com/forum/#!forum/rerast-users)
 * [Developers group](https://groups.google.com/forum/#!forum/rerast-dev)
 
+## Questions?
+Feel free to just file an issue on github.
+
 ## Authors
 
 See Cargo.toml

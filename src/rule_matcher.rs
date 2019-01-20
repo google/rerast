@@ -17,6 +17,7 @@ use crate::code_substitution::CodeSubstitution;
 use crate::definitions::RerastDefinitions;
 use crate::rule_finder::StartMatch;
 use crate::rules::{Rule, Rules};
+use crate::Config;
 use rustc::hir::{self, intravisit};
 use rustc::infer::{self, InferCtxt};
 use rustc::traits::ObligationCause;
@@ -33,7 +34,6 @@ use syntax::ptr::P;
 use syntax::source_map::{self, Spanned};
 use syntax::symbol::Symbol;
 use syntax_pos::SpanSnippetError;
-use crate::Config;
 
 #[macro_export]
 macro_rules! debug {
@@ -384,7 +384,7 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     // Checks if the supplied statement is a placeholder for a sequence of statements. e.g. `a();`
     // where `a` is of type rerast::Statements. If it is, returns the NodeId of the placeholder.
     fn opt_statements_placeholder_node_id(&self, stmt: &hir::Stmt) -> Option<NodeId> {
-        if let hir::StmtKind::Semi(ref expr, _) = stmt.node {
+        if let hir::StmtKind::Semi(ref expr) = stmt.node {
             if let hir::ExprKind::Call(ref function, _) = expr.node {
                 let fn_ty = self.rule_type_tables.expr_ty(function);
                 if !self.can_sub(fn_ty, self.rerast_definitions.statements) {
@@ -988,7 +988,7 @@ impl Matchable for hir::Destination {
     }
 }
 
-impl Matchable for hir::Label {
+impl Matchable for syntax::ast::Label {
     fn attempt_match<'r, 'a, 'gcx, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
@@ -1066,24 +1066,10 @@ impl Matchable for hir::Stmt {
     ) -> bool {
         use rustc::hir::StmtKind;
         match (&self.node, &code.node) {
-            (&StmtKind::Expr(ref p, _), &StmtKind::Expr(ref c, _))
-            | (&StmtKind::Semi(ref p, _), &StmtKind::Semi(ref c, _)) => p.attempt_match(state, c),
-            (&StmtKind::Decl(ref p, _), &StmtKind::Decl(ref c, _)) => p.attempt_match(state, c),
-            _ => false,
-        }
-    }
-}
-
-impl Matchable for hir::DeclKind {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
-        &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
-    ) -> bool {
-        use crate::hir::DeclKind;
-        match (self, code) {
-            (&DeclKind::Local(ref p), &DeclKind::Local(ref c)) => p.attempt_match(state, c),
-            (&DeclKind::Item(ref p), &DeclKind::Item(ref c)) => {
+            (&StmtKind::Expr(ref p), &StmtKind::Expr(ref c))
+            | (&StmtKind::Semi(ref p), &StmtKind::Semi(ref c)) => p.attempt_match(state, c),
+            (&StmtKind::Local(ref p), &StmtKind::Local(ref c)) => p.attempt_match(state, c),
+            (&StmtKind::Item(ref p), &StmtKind::Item(ref c)) => {
                 let krate = state.tcx.hir().krate();
                 krate.item(p.id).attempt_match(state, krate.item(c.id))
             }
@@ -1610,7 +1596,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
     }
 
     fn visit_stmt(&mut self, stmt: &'gcx hir::Stmt) {
-        if let hir::StmtKind::Semi(ref expr, _) = stmt.node {
+        if let hir::StmtKind::Semi(ref expr) = stmt.node {
             if let hir::ExprKind::Call(ref expr_fn, _) = expr.node {
                 if self.process_expr(expr_fn, stmt.span) {
                     return;

@@ -315,7 +315,10 @@ impl RerastOutput {
         }
     }
 
-    pub fn updated_files(self, file_loader: &dyn FileLoader) -> io::Result<HashMap<PathBuf, String>> {
+    pub fn updated_files(
+        self,
+        file_loader: &dyn FileLoader,
+    ) -> io::Result<HashMap<PathBuf, String>> {
         self.file_relative_substitutions.updated_files(file_loader)
     }
 
