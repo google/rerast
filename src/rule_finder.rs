@@ -22,8 +22,8 @@ use rustc::ty::{self, TyCtxt};
 use std::marker;
 use std::vec::Vec;
 use syntax::ast::NodeId;
-use syntax::ext::quote::rt::Span;
 use syntax::symbol::Symbol;
+use syntax_pos::Span;
 
 // Finds rules.
 pub(crate) struct RuleFinder<'a, 'gcx: 'a> {

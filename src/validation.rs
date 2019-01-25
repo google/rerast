@@ -20,7 +20,7 @@ use rustc::hir::{self, intravisit};
 use rustc::ty::TyCtxt;
 use std::collections::HashSet;
 use syntax::ast::NodeId;
-use syntax::ext::quote::rt::Span;
+use syntax_pos::Span;
 
 struct ValidatorState<'a, 'gcx: 'a> {
     tcx: TyCtxt<'a, 'gcx, 'gcx>,

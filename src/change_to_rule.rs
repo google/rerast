@@ -34,11 +34,10 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use syntax::ext::quote::rt::Span;
 use syntax::parse::{self, ParseSess};
 use syntax::source_map::{FileLoader, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
-use syntax_pos::{BytePos, Pos, SyntaxContext};
+use syntax_pos::{BytePos, Pos, Span, SyntaxContext};
 
 struct PlaceholderCandidate<T> {
     hash: u64,

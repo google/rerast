@@ -16,10 +16,9 @@ use itertools::Itertools;
 use std::collections::{hash_map, HashMap};
 use std::io;
 use std::path::PathBuf;
-use syntax::ext::quote::rt::Span;
 use syntax::source_map::FileLoader;
 use syntax::source_map::SourceMap;
-use syntax_pos::{self, BytePos};
+use syntax_pos::{self, BytePos, Span};
 
 /// A span within a file. Also differs from rustc's Span in that it's not interned, which allows us
 /// to make use of it after the compiler has finished running.

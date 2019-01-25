@@ -108,11 +108,10 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::Vec;
 use syntax::ast::NodeId;
-use syntax::ext::quote::rt::Span;
 use syntax::source_map::FileLoader;
 use syntax::source_map::{self, SourceMap};
 use syntax::symbol::Symbol;
-use syntax_pos::SyntaxContext;
+use syntax_pos::{Span, SyntaxContext};
 
 #[derive(Debug, Clone, Default)]
 pub struct Config {

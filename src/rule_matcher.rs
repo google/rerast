@@ -29,11 +29,10 @@ use std::mem;
 use syntax;
 use syntax::ast;
 use syntax::ast::NodeId;
-use syntax::ext::quote::rt::Span;
 use syntax::ptr::P;
 use syntax::source_map::{self, Spanned};
 use syntax::symbol::Symbol;
-use syntax_pos::SpanSnippetError;
+use syntax_pos::{Span, SpanSnippetError, DUMMY_SP};
 
 #[macro_export]
 macro_rules! debug {
@@ -1371,7 +1370,7 @@ impl<'gcx> PlaceholderContents<'gcx> {
                     let last_span = span_within_span(stmts[stmts.len() - 1].span, target);
                     result.with_hi(last_span.hi())
                 } else {
-                    syntax::ext::quote::rt::DUMMY_SP
+                    DUMMY_SP
                 }
             }
             Pattern(pattern) => pattern.span,

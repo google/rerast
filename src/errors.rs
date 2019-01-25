@@ -16,8 +16,7 @@ use rustc::ty::TyCtxt;
 use std;
 use std::fmt;
 use std::io;
-use syntax::ext::quote::rt::Span;
-use syntax_pos::{FileLinesResult, SpanLinesError};
+use syntax_pos::{FileLinesResult, Span, SpanLinesError};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ErrorWithSpan {
