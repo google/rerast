@@ -427,7 +427,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for DeclaredNamesFinder<'a, 'gcx>
     }
 
     fn visit_pat(&mut self, pat: &'gcx hir::Pat) {
-        if let hir::PatKind::Binding(_, node_id, ref ident, _) = pat.node {
+        if let hir::PatKind::Binding(_, node_id, _, ref ident, _) = pat.node {
             if self.names.insert(ident.name, node_id).is_some() {
                 // TODO: Proper error reporting
                 panic!(

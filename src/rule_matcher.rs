@@ -848,14 +848,14 @@ impl Matchable for hir::Pat {
         use crate::hir::PatKind::*;
         match (&self.node, &code.node) {
             (&Wild, &Wild) => true,
-            (&Binding(p_mode, p_node_id, ref _p_name, ref p_pat), _) => {
+            (&Binding(p_mode, p_node_id, _, ref _p_name, ref p_pat), _) => {
                 if state.bindings_can_match_patterns {
                     state.match_placeholders.placeholders_by_id.insert(
                         p_node_id,
                         Placeholder::new(PlaceholderContents::Pattern(code)),
                     );
                     true
-                } else if let Binding(c_mode, c_node_id, ref _c_name, ref c_pat) = code.node {
+                } else if let Binding(c_mode, c_node_id, _, ref _c_name, ref c_pat) = code.node {
                     if p_mode == c_mode && p_pat.is_none() && c_pat.is_none() {
                         state
                             .match_placeholders
@@ -1606,7 +1606,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
     }
 
     fn visit_pat(&mut self, pat: &'gcx hir::Pat) {
-        if let hir::PatKind::Binding(_, ref node_id, ref ident, _) = pat.node {
+        if let hir::PatKind::Binding(_, ref node_id, _, ref ident, _) = pat.node {
             if let Some(search_node_id) = self
                 .current_match
                 .rule
