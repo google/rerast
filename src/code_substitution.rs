@@ -176,7 +176,7 @@ fn code_is_single_tree(code: &str) -> bool {
         code.to_owned(),
         &session,
         None,
-    );
+    ).0;
     let mut count = 0;
     for tree in ts.into_trees() {
         match tree {
