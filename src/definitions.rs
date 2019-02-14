@@ -83,7 +83,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RerastDefinitionsFinder<'a, '
             let mut types = body
                 .arguments
                 .iter()
-                .map(|arg| tables.node_id_to_type(hir.node_to_hir_id(arg.id)));
+                .map(|arg| tables.node_type(hir.node_to_hir_id(arg.id)));
             self.definitions = Some(RerastDefinitions {
                 statements: types
                     .next()

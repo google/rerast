@@ -174,7 +174,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
                         .typeck_tables_of(self.tcx.hir().body_owner_def_id(body_id));
                     let arg0 = &args[0];
                     let arg_ty =
-                        type_tables.node_id_to_type(self.tcx.hir().node_to_hir_id(arg0.id));
+                        type_tables.node_type(self.tcx.hir().node_to_hir_id(arg0.id));
                     if let Err(errors) = self.maybe_add_rule(arg_ty, arms, body_id, arg0.span) {
                         self.errors.extend(errors);
                     }
