@@ -249,7 +249,7 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
                 // body (the block), since we don't want to replace it. But we still want to visit
                 // the body arguments, so we do so explicitly.
                 for arg in &body.arguments {
-                    self.visit_id(arg.id);
+                    self.visit_id(arg.hir_id);
                     self.visit_pat(&arg.pat);
                 }
                 self.process_children_of_expression(&body.value);
