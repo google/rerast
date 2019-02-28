@@ -17,11 +17,10 @@ use crate::definitions::RerastDefinitions;
 use crate::errors::ErrorWithSpan;
 use crate::rule_matcher::{Matchable, OperatorPrecedence};
 use crate::rules::{Rule, Rules};
-use rustc::hir::{self, intravisit};
+use rustc::hir::{self, intravisit, HirId};
 use rustc::ty::{self, TyCtxt};
 use std::marker;
 use std::vec::Vec;
-use syntax::ast::NodeId;
 use syntax::symbol::Symbol;
 use syntax_pos::Span;
 
@@ -174,7 +173,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
                         .typeck_tables_of(self.tcx.hir().body_owner_def_id(body_id));
                     let arg0 = &args[0];
                     let arg_ty =
-                        type_tables.node_type(self.tcx.hir().node_to_hir_id(arg0.id));
+                        type_tables.node_type(arg0.hir_id);
                     if let Err(errors) = self.maybe_add_rule(arg_ty, arms, body_id, arg0.span) {
                         self.errors.extend(errors);
                     }
@@ -216,7 +215,7 @@ pub(crate) trait StartMatch: Matchable {
     fn bindings_can_match_patterns() -> bool {
         false
     }
-    fn node_id(&self) -> NodeId;
+    fn hir_id(&self) -> HirId;
 }
 
 impl StartMatch for hir::Expr {
@@ -248,8 +247,8 @@ impl StartMatch for hir::Expr {
     fn replace_marker_type<'gcx>(rerast_definitions: &RerastDefinitions<'gcx>) -> ty::Ty<'gcx> {
         rerast_definitions.expr_rule_marker
     }
-    fn node_id(&self) -> NodeId {
-        self.id
+    fn hir_id(&self) -> HirId {
+        self.hir_id
     }
 }
 
@@ -281,8 +280,8 @@ impl StartMatch for hir::Ty {
     fn replace_marker_type<'gcx>(rerast_definitions: &RerastDefinitions<'gcx>) -> ty::Ty<'gcx> {
         rerast_definitions.type_rule_marker
     }
-    fn node_id(&self) -> NodeId {
-        self.id
+    fn hir_id(&self) -> HirId {
+        self.hir_id
     }
 }
 
@@ -317,8 +316,8 @@ impl StartMatch for hir::TraitRef {
     fn replace_marker_type<'gcx>(rerast_definitions: &RerastDefinitions<'gcx>) -> ty::Ty<'gcx> {
         rerast_definitions.trait_ref_rule_marker
     }
-    fn node_id(&self) -> NodeId {
-        self.ref_id
+    fn hir_id(&self) -> HirId {
+        self.hir_ref_id
     }
 }
 
@@ -356,7 +355,7 @@ impl StartMatch for hir::Pat {
     fn bindings_can_match_patterns() -> bool {
         true
     }
-    fn node_id(&self) -> NodeId {
-        self.id
+    fn hir_id(&self) -> HirId {
+        self.hir_id
     }
 }

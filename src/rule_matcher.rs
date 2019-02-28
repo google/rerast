@@ -18,7 +18,7 @@ use crate::definitions::RerastDefinitions;
 use crate::rule_finder::StartMatch;
 use crate::rules::{Rule, Rules};
 use crate::Config;
-use rustc::hir::{self, intravisit};
+use rustc::hir::{self, intravisit, HirId};
 use rustc::infer::{self, InferCtxt};
 use rustc::traits::ObligationCause;
 use rustc::ty::subst::Subst;
@@ -192,7 +192,7 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
             mem::swap(&mut placeholder.matches, &mut self.matches);
             match placeholder.contents {
                 PlaceholderContents::Expr(placeholder_expr) => {
-                    if placeholder_expr.id == StartMatch::node_id(m.node) {
+                    if placeholder_expr.hir_id == StartMatch::hir_id(m.node) {
                         // We've already matched this expression, don't match it again, but do
                         // try to find matches in its children.
                         self.process_children_of_expression(placeholder_expr);
@@ -365,17 +365,13 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
         &self,
         fn_expr: &hir::Expr,
         fn_type_tables: &ty::TypeckTables<'gcx>,
-        method_call_id: NodeId,
+        method_call_id: HirId,
         method_type_tables: &ty::TypeckTables<'gcx>,
     ) -> bool {
-        if let Some(&hir::def::Def::Method(method_id)) = fn_type_tables
-            .type_dependent_defs()
-            .get(self.tcx.hir().node_to_hir_id(fn_expr.id))
+        if let Some(&hir::def::Def::Method(method_id)) =
+            fn_type_tables.type_dependent_defs().get(fn_expr.hir_id)
         {
-            return method_type_tables.type_dependent_defs()
-                [self.tcx.hir().node_to_hir_id(method_call_id)]
-            .def_id()
-                == method_id;
+            return method_type_tables.type_dependent_defs()[method_call_id].def_id() == method_id;
         }
         false
     }
@@ -486,7 +482,7 @@ impl Matchable for hir::Expr {
                 state.fn_expr_equals_method_call(
                     c_fn,
                     state.code_type_tables(),
-                    self.id,
+                    self.hir_id,
                     state.rule_type_tables,
                 ) && p_args.attempt_match(state, c_args)
             }
@@ -494,7 +490,7 @@ impl Matchable for hir::Expr {
                 state.fn_expr_equals_method_call(
                     p_fn,
                     state.rule_type_tables,
-                    code.id,
+                    code.hir_id,
                     state.code_type_tables(),
                 ) && p_args.attempt_match(state, c_args)
             }
