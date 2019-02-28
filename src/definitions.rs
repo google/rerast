@@ -64,13 +64,11 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RerastDefinitionsFinder<'a, '
     fn visit_item(&mut self, item: &'gcx hir::Item) {
         if self.inside_rerast_mod {
             intravisit::walk_item(self, item);
-        } else {
-            if let hir::ItemKind::Mod(_) = item.node {
-                if item.ident.name == self.rerast_mod_symbol {
-                    self.inside_rerast_mod = true;
-                    intravisit::walk_item(self, item);
-                    self.inside_rerast_mod = false;
-                }
+        } else if let hir::ItemKind::Mod(_) = item.node {
+            if item.ident.name == self.rerast_mod_symbol {
+                self.inside_rerast_mod = true;
+                intravisit::walk_item(self, item);
+                self.inside_rerast_mod = false;
             }
         }
     }

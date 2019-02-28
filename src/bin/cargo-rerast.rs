@@ -146,7 +146,7 @@ fn get_compiler_invocation_infos_for_local_package(
             if let JsonValue::Array(data) = parsed {
                 if let (JsonValue::Array(arg_values), env_values) = (&data[0], &data[1]) {
                     let args: Result<Vec<String>, Error> = arg_values
-                        .into_iter()
+                        .iter()
                         .map(|v| {
                             if let Some(s) = v.as_str() {
                                 Ok(s.to_owned())
@@ -365,7 +365,7 @@ fn cargo_rerast() -> Result<(), Error> {
         get_compiler_invocation_infos_for_local_package(&matches)?
     };
 
-    let mut updates_to_apply = RerastOutput::new();
+    let mut updates_to_apply = RerastOutput::default();
     for rustc_invocation_info in &compiler_invocation_infos {
         if config.verbose {
             use itertools::Itertools;

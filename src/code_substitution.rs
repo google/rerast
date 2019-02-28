@@ -105,7 +105,7 @@ impl<S> CodeSubstitution<S> {
 }
 
 impl CodeSubstitution<Span> {
-    pub(crate) fn apply_with_source_map<'a>(
+    pub(crate) fn apply_with_source_map(
         substitutions: &[CodeSubstitution<Span>],
         source_map: &SourceMap,
         base_span: Span,
@@ -117,7 +117,7 @@ impl CodeSubstitution<Span> {
         )
     }
 
-    fn as_file_local_substitution(self, file_start: BytePos) -> CodeSubstitution<LocalSpan> {
+    fn into_file_local_substitution(self, file_start: BytePos) -> CodeSubstitution<LocalSpan> {
         CodeSubstitution {
             span: LocalSpan {
                 lo: self.span.lo() - file_start,
@@ -176,7 +176,8 @@ fn code_is_single_tree(code: &str) -> bool {
         code.to_owned(),
         &session,
         None,
-    ).0;
+    )
+    .0;
     let mut count = 0;
     for tree in ts.into_trees() {
         match tree {
@@ -199,7 +200,7 @@ fn remove_duplicate_or_overlapping_matches(matches: &mut Vec<CodeSubstitution<Lo
     });
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FileRelativeSubstitutions {
     // Substitutions keyed by filename. Each vector of substitutions must be sorted.
     substitutions_by_filename: HashMap<PathBuf, Vec<CodeSubstitution<LocalSpan>>>,
@@ -222,7 +223,7 @@ impl FileRelativeSubstitutions {
                 let source_file = source_map.get_source_file(&filename).unwrap();
                 for subst in file_substitutions {
                     file_relative_for_file
-                        .push(subst.as_file_local_substitution(source_file.start_pos));
+                        .push(subst.into_file_local_substitution(source_file.start_pos));
                 }
                 file_relative_for_file.sort();
                 remove_duplicate_or_overlapping_matches(file_relative_for_file);
@@ -230,12 +231,6 @@ impl FileRelativeSubstitutions {
         }
         FileRelativeSubstitutions {
             substitutions_by_filename: by_file,
-        }
-    }
-
-    pub(crate) fn empty() -> FileRelativeSubstitutions {
-        FileRelativeSubstitutions {
-            substitutions_by_filename: HashMap::new(),
         }
     }
 

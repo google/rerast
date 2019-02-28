@@ -130,7 +130,7 @@ impl fmt::Debug for RerastErrors {
 impl fmt::Display for RerastErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for error in &self.0 {
-            write!(f, "{}\n", error)?;
+            writeln!(f, "{}", error)?;
         }
         Ok(())
     }

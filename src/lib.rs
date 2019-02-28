@@ -120,23 +120,16 @@ pub struct Config {
     pub files: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CompilerInvocationInfo {
     pub args: Vec<String>,
     pub env: HashMap<String, String>,
 }
 
 impl CompilerInvocationInfo {
-    pub fn new() -> CompilerInvocationInfo {
-        CompilerInvocationInfo {
-            args: Vec::new(),
-            env: HashMap::new(),
-        }
-    }
-
     pub fn from_args<T: Iterator<Item = S>, S: Into<String>>(args: T) -> CompilerInvocationInfo {
         CompilerInvocationInfo {
-            args: args.map(|s| s.into()).collect(),
+            args: args.map(std::convert::Into::into).collect(),
             env: HashMap::new(),
         }
     }
@@ -169,7 +162,7 @@ impl CompilerInvocationInfo {
         syntax::with_globals(|| {
             let (_, _) = rustc_driver::run_compiler(&self.args, compiler_calls, file_loader, None);
         });
-        for (k, _) in &self.env {
+        for k in self.env.keys() {
             std::env::set_var(k, "");
         }
     }
@@ -302,18 +295,12 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RerastOutput {
     pub(crate) file_relative_substitutions: FileRelativeSubstitutions,
 }
 
 impl RerastOutput {
-    pub fn new() -> RerastOutput {
-        RerastOutput {
-            file_relative_substitutions: FileRelativeSubstitutions::empty(),
-        }
-    }
-
     pub fn updated_files(
         self,
         file_loader: &dyn FileLoader,
@@ -382,7 +369,7 @@ fn find_and_apply_rules<'a, 'gcx>(
             }
             // Most likely the entire compilation target is empty due to a cfg attribute at the
             // root.
-            return Ok(RerastOutput::new());
+            return Ok(RerastOutput::default());
         }
     };
     let rules =
@@ -452,7 +439,7 @@ fn run_compiler(
     invocation_info: &CompilerInvocationInfo,
     config: Config,
 ) -> Result<RerastOutput, RerastErrors> {
-    let output = Rc::new(RefCell::new(Ok(RerastOutput::new())));
+    let output = Rc::new(RefCell::new(Ok(RerastOutput::default())));
     let compiler_calls = Box::new(RerastCompilerCalls {
         output: output.clone(),
         config,
@@ -497,7 +484,7 @@ impl RerastCompilerDriver {
             .args_iter()
             .skip(1)
             .find(|arg| arg.ends_with(".rs"))
-            .map(|s| s.as_ref())
+            .map(std::convert::AsRef::as_ref)
     }
 
     // Returns the argument after the first argument that's equal to before.
@@ -547,7 +534,7 @@ impl RerastCompilerDriver {
                 if config.verbose {
                     println!("Skipping {} due to --files", code_filename);
                 }
-                return Ok(RerastOutput::new());
+                return Ok(RerastOutput::default());
             }
         }
         let code_path = PathBuf::from(code_filename);
@@ -658,7 +645,7 @@ mod tests {
                 + header2;
             let rule_header = header1.to_owned() + "use crate::common;\n" + header2;
             file_loader.add_file(CODE_FILE_NAME.to_owned(), code_header.clone() + &self.input);
-            let args = CompilerInvocationInfo::new()
+            let args = CompilerInvocationInfo::default()
                 .arg("rerast_test")
                 .arg("--crate-type")
                 .arg("lib")
