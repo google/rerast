@@ -137,7 +137,7 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
                 .iter()
                 .map(|arg| {
                     (arg.pat.id, {
-                        let ty = rule_tables.node_type(self.tcx.hir().node_to_hir_id(arg.id));
+                        let ty = rule_tables.node_type(arg.hir_id);
                         ty.subst(tcx, substs)
                     })
                 })
