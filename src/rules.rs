@@ -13,10 +13,9 @@
 // limitations under the License.
 
 use crate::rule_finder::StartMatch;
-use rustc::hir;
+use rustc::hir::{self, HirId};
 use std::collections::{HashMap, HashSet};
 use std::vec::Vec;
-use syntax::ast::NodeId;
 use syntax::symbol::Symbol;
 
 #[derive(Debug)]
@@ -26,15 +25,15 @@ pub(crate) struct Rule<'gcx, T: StartMatch> {
     // The method in which the rule is defined.
     pub(crate) body_id: hir::BodyId,
     // Maps from the names of declared variables (which must be unique within the search pattern) to
-    // their NodeId. This is used to pair up variables in the search pattern with their counterparts
+    // their HirId. This is used to pair up variables in the search pattern with their counterparts
     // in the replacement pattern. This is necessary since as far as rustc is concerned, they're
     // completely unrelated definitions. It isn't needed for expression placeholders since they're
     // declared as arguments to the function, so the search and replace pattern can both reference
     // the same placeholder variable.
-    pub(crate) declared_name_node_ids: HashMap<Symbol, NodeId>,
+    pub(crate) declared_name_hir_ids: HashMap<Symbol, HirId>,
     // IDs of the arguments to the function in which the rule was declared. When references to these
-    // NodeIds are encountered in the search pattern, they should be treated as placeholders.
-    pub(crate) placeholder_ids: HashSet<NodeId>,
+    // IDs are encountered in the search pattern, they should be treated as placeholders.
+    pub(crate) placeholder_ids: HashSet<HirId>,
 }
 
 #[derive(Debug)]

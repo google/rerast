@@ -136,7 +136,7 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
                 .arguments
                 .iter()
                 .map(|arg| {
-                    (arg.pat.id, {
+                    (arg.pat.hir_id, {
                         let ty = rule_tables.node_type(arg.hir_id);
                         ty.subst(tcx, substs)
                     })
@@ -303,9 +303,9 @@ pub(crate) struct MatchState<'r, 'a, 'gcx: 'r + 'a + 'tcx, 'tcx: 'a> {
     match_placeholders: MatchPlaceholders<'r, 'gcx>,
     // This map should have all the same keys as the placeholders on match_placeholders. It's here
     // instead of on Match because it contains types that don't live as long as the match.
-    placeholder_types_by_id: HashMap<NodeId, ty::Ty<'tcx>>,
+    placeholder_types_by_id: HashMap<HirId, ty::Ty<'tcx>>,
     rerast_definitions: RerastDefinitions<'gcx>,
-    placeholder_ids: &'r HashSet<NodeId>,
+    placeholder_ids: &'r HashSet<HirId>,
     // Whether bindings within a pattern are permitted to match any pattern. Otherwise, bindings are
     // only permitted to match bindings. This is enabled within replace_pattern, since the bindings
     // are only used within the pattern, not also as expressions, so binding to a pattern is
@@ -317,8 +317,9 @@ pub(crate) struct MatchState<'r, 'a, 'gcx: 'r + 'a + 'tcx, 'tcx: 'a> {
 impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     fn attempt_to_bind_expr(&mut self, qpath: &hir::QPath, expr: &'gcx hir::Expr) -> bool {
         if let Some(node_id) = node_id_from_path(qpath) {
-            if self.placeholder_ids.contains(&node_id) {
-                let p_ty = self.placeholder_types_by_id[&node_id];
+            let hir_id = self.tcx.hir().node_to_hir_id(node_id);
+            if self.placeholder_ids.contains(&hir_id) {
+                let p_ty = self.placeholder_types_by_id[&hir_id];
                 let c_ty = self.code_type_tables().expr_ty(expr);
                 // We check the type of the expression in our code both with and without
                 // adjustment. It'd be nice if we didn't have to do this. I'm not sure it actually
@@ -341,7 +342,7 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
                 let old_placeholder = self
                     .match_placeholders
                     .placeholders_by_id
-                    .insert(node_id, Placeholder::new(PlaceholderContents::Expr(expr)));
+                    .insert(hir_id, Placeholder::new(PlaceholderContents::Expr(expr)));
                 // Check that we don't already have a value for our placeholder. This shouldn't be
                 // possible since SearchValidator checks that placeholders aren't used multiple
                 // times. This is tested by error_multiple_bindings.
@@ -387,7 +388,8 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
                 }
                 if let hir::ExprKind::Path(ref path) = function.node {
                     if let Some(node_id) = node_id_from_path(path) {
-                        if self.placeholder_ids.contains(&node_id) {
+                        let hir_id = self.tcx.hir().node_to_hir_id(node_id);
+                        if self.placeholder_ids.contains(&hir_id) {
                             return Some(node_id);
                         }
                     }
@@ -845,18 +847,20 @@ impl Matchable for hir::Pat {
         match (&self.node, &code.node) {
             (&Wild, &Wild) => true,
             (&Binding(p_mode, p_node_id, _, ref _p_name, ref p_pat), _) => {
+                let p_hir_id = state.tcx.hir().node_to_hir_id(p_node_id);
                 if state.bindings_can_match_patterns {
                     state.match_placeholders.placeholders_by_id.insert(
-                        p_node_id,
+                        p_hir_id,
                         Placeholder::new(PlaceholderContents::Pattern(code)),
                     );
                     true
                 } else if let Binding(c_mode, c_node_id, _, ref _c_name, ref c_pat) = code.node {
                     if p_mode == c_mode && p_pat.is_none() && c_pat.is_none() {
+                        let c_hir_id = state.tcx.hir().node_to_hir_id(c_node_id);
                         state
                             .match_placeholders
                             .matched_variable_decls
-                            .insert(p_node_id, c_node_id);
+                            .insert(p_hir_id, c_hir_id);
                         true
                     } else {
                         false
@@ -1032,11 +1036,13 @@ impl Matchable for hir::Path {
     ) -> bool {
         match (self.def, code.def) {
             (hir::def::Def::Local(p_def_id), hir::def::Def::Local(c_def_id)) => {
+                let p_hir_id = state.tcx.hir().node_to_hir_id(p_def_id);
+                let c_hir_id = state.tcx.hir().node_to_hir_id(c_def_id);
                 state
                     .match_placeholders
                     .matched_variable_decls
-                    .get(&p_def_id)
-                    == Some(&c_def_id)
+                    .get(&p_hir_id)
+                    == Some(&c_hir_id)
             }
             _ => self.def == code.def,
         }
@@ -1095,7 +1101,7 @@ impl Matchable for hir::Item {
         state
             .match_placeholders
             .matched_variable_decls
-            .insert(self.id, code.id);
+            .insert(self.hir_id, code.hir_id);
         self.attrs.attempt_match(state, &*code.attrs)
             && self.vis.attempt_match(state, &code.vis)
             && self.node.attempt_match(state, &code.node)
@@ -1202,14 +1208,15 @@ impl Matchable for hir::Block {
                 }
                 let p_after = &self.stmts[i + 1..];
                 let c_after = &code.stmts[code.stmts.len() - p_after.len()..];
+                let hir_id = state.tcx.hir().node_to_hir_id(node_id);
                 if self.stmts[..i].attempt_match(state, &code.stmts[..i])
                     && p_after.attempt_match(state, c_after)
-                    && state.placeholder_ids.contains(&node_id)
+                    && state.placeholder_ids.contains(&hir_id)
                 {
                     // TODO: Refactor this insert and the other one to a common location so
                     // that both check there isn't already something there.
                     state.match_placeholders.placeholders_by_id.insert(
-                        node_id,
+                        hir_id,
                         Placeholder::new(PlaceholderContents::Statements(
                             &code.stmts[i..code.stmts.len() - p_after.len()],
                         )),
@@ -1309,7 +1316,7 @@ impl<'r, 'a, 'gcx, 'tcx, T: StartMatch> Match<'r, 'gcx, T> {
             result: vec![],
             current_match: self,
             parent_expr: None,
-            substitute_node_ids: HashMap::new(),
+            substitute_hir_ids: HashMap::new(),
         };
         let source_map = tcx.sess.source_map();
         T::walk(&mut replacement_visitor, replacement);
@@ -1325,11 +1332,11 @@ impl<'r, 'a, 'gcx, 'tcx, T: StartMatch> Match<'r, 'gcx, T> {
 
 #[derive(Debug)]
 pub(crate) struct MatchPlaceholders<'r, 'gcx: 'r> {
-    // Maps the node IDs of placeholders in arguments, to their state (unbound, bound to expression
+    // Maps the IDs of placeholders in arguments, to their state (unbound, bound to expression
     // etc).
-    placeholders_by_id: HashMap<NodeId, Placeholder<'r, 'gcx>>,
+    placeholders_by_id: HashMap<HirId, Placeholder<'r, 'gcx>>,
     // Maps from variables declared in the search pattern to variables declared in the code.
-    matched_variable_decls: HashMap<NodeId, NodeId>,
+    matched_variable_decls: HashMap<HirId, HirId>,
 }
 
 impl<'r, 'a, 'gcx, 'tcx> MatchPlaceholders<'r, 'gcx> {
@@ -1340,11 +1347,8 @@ impl<'r, 'a, 'gcx, 'tcx> MatchPlaceholders<'r, 'gcx> {
         }
     }
 
-    fn get_placeholder<'this>(
-        &'this self,
-        maybe_node_id: Option<NodeId>,
-    ) -> Option<&'this Placeholder<'r, 'gcx>> {
-        maybe_node_id.and_then(|node_id| self.placeholders_by_id.get(&node_id))
+    fn get_placeholder<'this>(&'this self, hir_id: HirId) -> Option<&'this Placeholder<'r, 'gcx>> {
+        self.placeholders_by_id.get(&hir_id)
     }
 }
 
@@ -1524,9 +1528,9 @@ struct ReplacementVisitor<'r, 'a: 'r, 'gcx: 'a, T: StartMatch> {
     result: Vec<CodeSubstitution<Span>>,
     current_match: &'r Match<'r, 'gcx, T>,
     parent_expr: Option<&'gcx hir::Expr>,
-    // Map from NodeIds of variables declared in the replacement pattern to NodeIds declared in the
+    // Map from HirIds of variables declared in the replacement pattern to HirIds declared in the
     // code that should replace them.
-    substitute_node_ids: HashMap<NodeId, NodeId>,
+    substitute_hir_ids: HashMap<HirId, HirId>,
 }
 
 impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
@@ -1538,20 +1542,25 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
             .unwrap()
     }
 
+    fn hir_id_snippet(&self, hir_id: HirId) -> String {
+        self.node_id_snippet(self.tcx.hir().hir_to_node_id(hir_id))
+    }
+
     // Check if the supplied expression is a placeholder variable. If it is, replace the supplied
     // span with whatever was bound to the placeholder and return true.
     fn process_expr(&mut self, expr: &'gcx hir::Expr, placeholder_span: Span) -> bool {
         if let hir::ExprKind::Path(ref path) = expr.node {
-            if let Some(placeholder) = self
-                .current_match
-                .match_placeholders
-                .get_placeholder(node_id_from_path(path))
-            {
-                self.process_placeholder(placeholder, placeholder_span);
-                return true;
-            } else if let Some(node_id) = node_id_from_path(path) {
-                if let Some(code_node_id) = self.substitute_node_ids.get(&node_id) {
-                    let code = self.node_id_snippet(*code_node_id);
+            if let Some(node_id) = node_id_from_path(path) {
+                let hir_id = self.tcx.hir().node_to_hir_id(node_id);
+                if let Some(placeholder) = self
+                    .current_match
+                    .match_placeholders
+                    .get_placeholder(hir_id)
+                {
+                    self.process_placeholder(placeholder, placeholder_span);
+                    return true;
+                } else if let Some(code_hir_id) = self.substitute_hir_ids.get(&hir_id) {
+                    let code = self.hir_id_snippet(*code_hir_id);
                     self.result.push(CodeSubstitution::new(expr.span, code));
                     return true;
                 }
@@ -1602,32 +1611,32 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
     }
 
     fn visit_pat(&mut self, pat: &'gcx hir::Pat) {
-        if let hir::PatKind::Binding(_, ref node_id, _, ref ident, _) = pat.node {
-            if let Some(search_node_id) = self
+        if let hir::PatKind::Binding(_, node_id, _, ref ident, _) = pat.node {
+            if let Some(search_hir_id) = self
                 .current_match
                 .rule
-                .declared_name_node_ids
+                .declared_name_hir_ids
                 .get(&ident.name)
             {
                 if let Some(placeholder) = self
                     .current_match
                     .match_placeholders
-                    .get_placeholder(Some(*search_node_id))
+                    .get_placeholder(*search_hir_id)
                 {
                     self.process_placeholder(placeholder, pat.span);
-                } else if let Some(code_node_id) = self
+                } else if let Some(&code_hir_id) = self
                     .current_match
                     .match_placeholders
                     .matched_variable_decls
-                    .get(search_node_id)
+                    .get(search_hir_id)
                 {
                     // TODO: Would the above be clearer if the RHS was extracted to a method on
                     // Match?
 
                     // Record the mapping so that we can replace references to the variable as well.
-                    self.substitute_node_ids.insert(*node_id, *code_node_id);
-
-                    let code = self.node_id_snippet(*code_node_id);
+                    let hir_id = self.tcx.hir().node_to_hir_id(node_id);
+                    self.substitute_hir_ids.insert(hir_id, code_hir_id);
+                    let code = self.hir_id_snippet(code_hir_id);
                     self.result.push(CodeSubstitution::new(ident.span, code));
                 }
             }

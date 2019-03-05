@@ -120,14 +120,14 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
                 .body(body_id)
                 .arguments
                 .iter()
-                .map(|arg| arg.pat.id)
+                .map(|arg| arg.pat.hir_id)
                 .collect();
 
             let rule = Rule {
                 search,
                 replace,
                 body_id,
-                declared_name_node_ids: DeclaredNamesFinder::find(self.tcx, search),
+                declared_name_hir_ids: DeclaredNamesFinder::find(self.tcx, search),
                 placeholder_ids,
             };
             rule.validate(self.tcx)?;

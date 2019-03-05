@@ -16,19 +16,18 @@ use super::node_id_from_path;
 use crate::errors::ErrorWithSpan;
 use crate::rule_finder::StartMatch;
 use crate::rules::Rule;
-use rustc::hir::{self, intravisit};
+use rustc::hir::{self, intravisit, HirId};
 use rustc::ty::TyCtxt;
 use std::collections::HashSet;
-use syntax::ast::NodeId;
 use syntax_pos::Span;
 
 struct ValidatorState<'a, 'gcx: 'a> {
     tcx: TyCtxt<'a, 'gcx, 'gcx>,
     errors: Vec<ErrorWithSpan>,
     // Definitions that are defined as placeholders.
-    placeholders: HashSet<NodeId>,
+    placeholders: HashSet<HirId>,
     // Placeholders that have been bound.
-    bound_placeholders: HashSet<NodeId>,
+    bound_placeholders: HashSet<HirId>,
 }
 
 impl<'a, 'gcx: 'a> ValidatorState<'a, 'gcx> {
@@ -48,7 +47,11 @@ impl<'gcx, T: StartMatch + 'gcx> Rule<'gcx, T> {
             state: ValidatorState {
                 tcx,
                 errors: Vec::new(),
-                placeholders: rule_body.arguments.iter().map(|arg| arg.pat.id).collect(),
+                placeholders: rule_body
+                    .arguments
+                    .iter()
+                    .map(|arg| arg.pat.hir_id)
+                    .collect(),
                 bound_placeholders: HashSet::new(),
             },
         };
@@ -75,8 +78,9 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for SearchValidator<'a, 'gcx> {
 
     fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: hir::HirId, span: Span) {
         if let Some(node_id) = node_id_from_path(qpath) {
-            if self.state.placeholders.contains(&node_id)
-                && !self.state.bound_placeholders.insert(node_id)
+            let hir_id = self.state.tcx.hir().node_to_hir_id(node_id);
+            if self.state.placeholders.contains(&hir_id)
+                && !self.state.bound_placeholders.insert(hir_id)
             {
                 self.state.add_error(
                     "Placeholder is bound multiple times. This is not currently permitted.",
@@ -99,8 +103,9 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReplacementValidator<'a, 'gcx> 
 
     fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: hir::HirId, span: Span) {
         if let Some(node_id) = node_id_from_path(qpath) {
-            if self.state.placeholders.contains(&node_id)
-                && !self.state.bound_placeholders.contains(&node_id)
+            let hir_id = self.state.tcx.hir().node_to_hir_id(node_id);
+            if self.state.placeholders.contains(&hir_id)
+                && !self.state.bound_placeholders.contains(&hir_id)
             {
                 self.state.add_error(
                     "Placeholder used in replacement pattern, but never bound.",
