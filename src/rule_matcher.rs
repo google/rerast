@@ -846,17 +846,15 @@ impl Matchable for hir::Pat {
         use crate::hir::PatKind::*;
         match (&self.node, &code.node) {
             (&Wild, &Wild) => true,
-            (&Binding(p_mode, p_node_id, _, ref _p_name, ref p_pat), _) => {
-                let p_hir_id = state.tcx.hir().node_to_hir_id(p_node_id);
+            (&Binding(p_mode, p_hir_id, ref _p_name, ref p_pat), _) => {
                 if state.bindings_can_match_patterns {
                     state.match_placeholders.placeholders_by_id.insert(
                         p_hir_id,
                         Placeholder::new(PlaceholderContents::Pattern(code)),
                     );
                     true
-                } else if let Binding(c_mode, c_node_id, _, ref _c_name, ref c_pat) = code.node {
+                } else if let Binding(c_mode, c_hir_id, ref _c_name, ref c_pat) = code.node {
                     if p_mode == c_mode && p_pat.is_none() && c_pat.is_none() {
-                        let c_hir_id = state.tcx.hir().node_to_hir_id(c_node_id);
                         state
                             .match_placeholders
                             .matched_variable_decls
@@ -1611,7 +1609,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
     }
 
     fn visit_pat(&mut self, pat: &'gcx hir::Pat) {
-        if let hir::PatKind::Binding(_, node_id, _, ref ident, _) = pat.node {
+        if let hir::PatKind::Binding(_, hir_id, ref ident, _) = pat.node {
             if let Some(search_hir_id) = self
                 .current_match
                 .rule
@@ -1634,7 +1632,6 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
                     // Match?
 
                     // Record the mapping so that we can replace references to the variable as well.
-                    let hir_id = self.tcx.hir().node_to_hir_id(node_id);
                     self.substitute_hir_ids.insert(hir_id, code_hir_id);
                     let code = self.hir_id_snippet(code_hir_id);
                     self.result.push(CodeSubstitution::new(ident.span, code));

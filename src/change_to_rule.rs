@@ -157,8 +157,7 @@ where
                 snippet,
                 &session,
                 None,
-            )
-            .0;
+            );
             let mut hasher = DefaultHasher::new();
             hash_token_stream(&stream, &mut hasher);
             hasher.finish()
@@ -505,8 +504,7 @@ impl<'a, 'gcx: 'a, 'placeholders> PlaceholderMatcher<'a, 'gcx, 'placeholders> {
                         source.clone(),
                         &session,
                         None,
-                    )
-                    .0;
+                    );
                     let other_span = other.data.absolute(&*self.other_filemap);
                     let other_source = source_map.span_to_snippet(other_span).unwrap();
                     let other_stream = parse::parse_stream_from_source_str(
@@ -514,8 +512,7 @@ impl<'a, 'gcx: 'a, 'placeholders> PlaceholderMatcher<'a, 'gcx, 'placeholders> {
                         other_source,
                         &session,
                         None,
-                    )
-                    .0;
+                    );
                     if stream.eq_unspanned(&other_stream)
                         && !self
                             .used_placeholder_spans
