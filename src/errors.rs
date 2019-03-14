@@ -35,7 +35,9 @@ impl ErrorWithSpan {
     pub(crate) fn with_snippet<'a, 'gcx>(self, tcx: TyCtxt<'a, 'gcx, 'gcx>) -> RerastError {
         RerastError {
             message: self.message,
-            file_lines: Some(tcx.sess.source_map().span_to_lines(self.span)),
+            file_lines: Some(FileLines::from_lines_result(
+                tcx.sess.source_map().span_to_lines(self.span),
+            )),
         }
     }
 }
@@ -48,50 +50,103 @@ impl From<ErrorWithSpan> for Vec<ErrorWithSpan> {
 
 pub struct RerastError {
     pub(crate) message: String,
-    pub(crate) file_lines: Option<FileLinesResult>,
+    pub(crate) file_lines: Option<Result<FileLines, FileLinesError>>,
+}
+
+pub struct FileLines {
+    pub(crate) file_name: syntax_pos::FileName,
+    pub(crate) lines: Vec<Line>,
+}
+
+pub struct Line {
+    pub(crate) code: Option<String>,
+    pub(crate) line_index: usize,
+    pub(crate) start_col: usize,
+    pub(crate) end_col: usize,
+}
+
+pub struct FileLinesError {
+    message: String,
+}
+
+impl FileLines {
+    fn from_lines_result(file_lines_result: FileLinesResult) -> Result<FileLines, FileLinesError> {
+        match file_lines_result {
+            Ok(file_lines) => Ok(FileLines {
+                file_name: file_lines.file.name.clone(),
+                lines: file_lines
+                    .lines
+                    .iter()
+                    .map(|line_info| Line {
+                        code: file_lines
+                            .file
+                            .get_line(line_info.line_index)
+                            .and_then(|code| Some(code.into_owned())),
+                        line_index: line_info.line_index,
+                        start_col: line_info.start_col.0,
+                        end_col: line_info.end_col.0,
+                    })
+                    .collect(),
+            }),
+            Err(span_lines_error) => Err(FileLinesError {
+                message: match span_lines_error {
+                    SpanLinesError::IllFormedSpan(span) => {
+                        format!("Unable to report location. Ill-formed span: {:?}", span)
+                    }
+                    SpanLinesError::DistinctSources(_) => {
+                        format!("Unable to report location. Spans distinct sources")
+                    }
+                },
+            }),
+        }
+    }
+}
+
+impl fmt::Display for FileLines {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(first_line) = self.lines.get(0) {
+            writeln!(
+                f,
+                "    --> {}:{}:{}",
+                self.file_name, first_line.line_index, first_line.start_col
+            )?;
+        }
+        for line_info in &self.lines {
+            if let Some(line) = &line_info.code {
+                writeln!(f, "{}", line)?;
+                writeln!(
+                    f,
+                    "{}{}",
+                    " ".repeat(line_info.start_col),
+                    "^".repeat(line_info.end_col - line_info.start_col)
+                )?;
+            } else {
+                writeln!(
+                    f,
+                    "Error occurred on non-existent line {}",
+                    line_info.line_index
+                )?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Display for RerastError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "error: {}", self.message)?;
-        match self.file_lines {
-            Some(Ok(ref file_lines)) => {
-                if let Some(first_line) = file_lines.lines.get(0) {
-                    writeln!(
-                        f,
-                        "    --> {}:{}:{}",
-                        file_lines.file.name, first_line.line_index, first_line.start_col.0
-                    )?;
-                }
-                for line_info in &file_lines.lines {
-                    if let Some(line) = file_lines.file.get_line(line_info.line_index) {
-                        writeln!(f, "{}", line)?;
-                        writeln!(
-                            f,
-                            "{}{}",
-                            " ".repeat(line_info.start_col.0),
-                            "^".repeat(line_info.end_col.0 - line_info.start_col.0)
-                        )?;
-                    } else {
-                        writeln!(
-                            f,
-                            "Error occurred on non-existent line {}",
-                            line_info.line_index
-                        )?;
-                    }
-                }
-            }
-            Some(Err(ref span_lines_error)) => match *span_lines_error {
-                SpanLinesError::IllFormedSpan(span) => {
-                    writeln!(f, "Unable to report location. Ill-formed span: {:?}", span)?;
-                }
-                SpanLinesError::DistinctSources(_) => {
-                    writeln!(f, "Unable to report location. Spans distinct sources")?;
-                }
-            },
+        match &self.file_lines {
+            Some(Ok(file_lines)) => writeln!(f, "{}", file_lines)?,
+            Some(Err(error)) => writeln!(f, "{}", error.message)?,
             None => {}
         }
         Ok(())
+    }
+}
+
+impl fmt::Display for FileLinesError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.message)
     }
 }
 
@@ -139,5 +194,11 @@ impl fmt::Display for RerastErrors {
 impl From<io::Error> for RerastErrors {
     fn from(err: io::Error) -> RerastErrors {
         RerastErrors::with_message(err.to_string())
+    }
+}
+
+impl From<rustc::util::common::ErrorReported> for RerastErrors {
+    fn from(_err: rustc::util::common::ErrorReported) -> RerastErrors {
+        RerastErrors::with_message("An error occurred, see above for details")
     }
 }

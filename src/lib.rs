@@ -77,6 +77,7 @@ use rerast_macros;
 extern crate rustc;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
+extern crate rustc_interface;
 extern crate syntax;
 extern crate syntax_pos;
 
@@ -98,14 +99,11 @@ use crate::file_loader::InMemoryFileLoader;
 use crate::rule_finder::StartMatch;
 use crate::rules::Rules;
 use rustc::hir::{self, intravisit, HirId};
-use rustc::session::Session;
 use rustc::ty::TyCtxt;
-use rustc_driver::{driver, Compilation, CompilerCalls, RustcDefaultCalls};
-use std::cell::RefCell;
+use rustc_interface::interface;
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::vec::Vec;
 use syntax::ast::NodeId;
 use syntax::source_map::FileLoader;
@@ -153,18 +151,19 @@ impl CompilerInvocationInfo {
 
     pub(crate) fn run_compiler<'a>(
         &self,
-        compiler_calls: Box<dyn CompilerCalls<'a> + rustc_data_structures::sync::Send>,
+        callbacks: &mut (dyn rustc_driver::Callbacks + Send),
         file_loader: Option<Box<dyn FileLoader + Send + Sync + 'static>>,
-    ) {
+    ) -> interface::Result<()> {
         for (k, v) in &self.env {
             std::env::set_var(k, v);
         }
         syntax::with_globals(|| {
-            let (_, _) = rustc_driver::run_compiler(&self.args, compiler_calls, file_loader, None);
-        });
+            rustc_driver::run_compiler(&self.args, callbacks, file_loader, None)
+        })?;
         for k in self.env.keys() {
             std::env::set_var(k, "");
         }
+        Ok(())
     }
 }
 
@@ -314,45 +313,28 @@ impl RerastOutput {
     }
 }
 
-struct RerastCompilerCalls {
+struct RerastCompilerCallbacks {
     // This needs to be an Rc because rust CompilerCalls::build_controller doesn't (at the time of
     // writing) provide any relationship between the lifetime of self and the the lifetime of the
     // returned CompileController.
-    output: Rc<RefCell<Result<RerastOutput, RerastErrors>>>,
+    output: Result<RerastOutput, RerastErrors>,
     config: Config,
 }
 
-impl<'a> CompilerCalls<'a> for RerastCompilerCalls {
-    fn build_controller(
-        self: Box<Self>,
-        sess: &Session,
-        matches: &getopts::Matches,
-    ) -> driver::CompileController<'a> {
-        let defaults = Box::new(RustcDefaultCalls);
-        let mut control = defaults.build_controller(sess, matches);
-        let output = Rc::clone(&self.output);
-        let config = self.config.clone();
-        control.after_analysis.callback =
-            Box::new(move |state| after_analysis(state, &output, &config));
-        control.after_analysis.stop = Compilation::Stop;
-        control
+impl rustc_driver::Callbacks for RerastCompilerCallbacks {
+    fn after_analysis(&mut self, compiler: &interface::Compiler) -> bool {
+        compiler.session().abort_if_errors();
+        compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
+            self.output = find_and_apply_rules(tcx, &self.config);
+        });
+        false // Don't continue
     }
 }
 
-fn after_analysis<'a, 'gcx>(
-    state: &mut driver::CompileState<'a, 'gcx>,
-    output: &Rc<RefCell<Result<RerastOutput, RerastErrors>>>,
-    config: &Config,
-) {
-    state.session.abort_if_errors();
-    *output.borrow_mut() = find_and_apply_rules(state, config.clone());
-}
-
 fn find_and_apply_rules<'a, 'gcx>(
-    state: &mut driver::CompileState<'a, 'gcx>,
-    config: Config,
+    tcx: TyCtxt<'a, 'gcx, 'gcx>,
+    config: &Config,
 ) -> Result<RerastOutput, RerastErrors> {
-    let tcx = state.tcx.unwrap();
     let krate = tcx.hir().krate();
     let rerast_definitions = match RerastDefinitionsFinder::find_definitions(tcx, krate) {
         Some(r) => r,
@@ -384,7 +366,7 @@ fn find_and_apply_rules<'a, 'gcx>(
     if config.verbose {
         println!("Found {} rule(s)", rules.len());
     }
-    let replacer = Replacer::new(tcx, rerast_definitions, rules, config);
+    let replacer = Replacer::new(tcx, rerast_definitions, rules, config.clone());
     Ok(RerastOutput {
         file_relative_substitutions: replacer.apply_to_crate(krate),
     })
@@ -439,19 +421,12 @@ fn run_compiler(
     invocation_info: &CompilerInvocationInfo,
     config: Config,
 ) -> Result<RerastOutput, RerastErrors> {
-    let output = Rc::new(RefCell::new(Ok(RerastOutput::default())));
-    let compiler_calls = Box::new(RerastCompilerCalls {
-        output: output.clone(),
+    let mut callbacks = RerastCompilerCallbacks {
+        output: Ok(RerastOutput::default()),
         config,
-    });
-    invocation_info.run_compiler(compiler_calls, file_loader);
-    Rc::try_unwrap(output)
-        .map_err(|_| {
-            RerastErrors::with_message(
-                "Internal error: rustc_driver unexpectedly kept a reference to our data",
-            )
-        })?
-        .into_inner()
+    };
+    invocation_info.run_compiler(&mut callbacks, file_loader)?;
+    callbacks.output
 }
 
 pub struct RerastCompilerDriver {
@@ -703,11 +678,11 @@ mod tests {
                         Some(Ok(ref file_lines)) => {
                             assert_eq!(1, file_lines.lines.len());
                             let line_info = &file_lines.lines[0];
-                            if let Some(line) = file_lines.file.get_line(line_info.line_index) {
+                            if let Some(line) = &line_info.code {
                                 let snippet: String = line
                                     .chars()
-                                    .skip(line_info.start_col.0)
-                                    .take(line_info.end_col.0 - line_info.start_col.0)
+                                    .skip(line_info.start_col)
+                                    .take(line_info.end_col - line_info.start_col)
                                     .collect();
                                 assert_eq!(expected_snippet, snippet);
                             } else {
@@ -718,7 +693,7 @@ mod tests {
                             }
                         }
                         Some(Err(ref error)) => {
-                            panic!("Expected error with file lines, but error: {:?}", error)
+                            panic!("Expected error with file lines, but error: {}", error)
                         }
                         None => panic!("Expected error with lines, but got error without lines"),
                     }

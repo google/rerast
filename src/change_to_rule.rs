@@ -26,7 +26,7 @@ use crate::file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
 use crate::CompilerInvocationInfo;
 use rustc::hir::{self, intravisit};
 use rustc::ty::{TyCtxt, TyKind};
-use std::cell::RefCell;
+use rustc_interface::interface;
 use std::collections::hash_map::{DefaultHasher, HashMap};
 use std::collections::hash_set::HashSet;
 use std::fmt::Write;
@@ -253,84 +253,66 @@ struct FindRulesState {
     changed_side_state: Option<ChangedSideState>,
 }
 
-struct RCompilerCalls {
-    find_rules_state: Rc<RefCell<FindRulesState>>,
-}
-
-impl<'a> rustc_driver::CompilerCalls<'a> for RCompilerCalls {
-    fn build_controller(
-        self: Box<Self>,
-        sess: &rustc::session::Session,
-        matches: &getopts::Matches,
-    ) -> rustc_driver::driver::CompileController<'a> {
-        let defaults = Box::new(rustc_driver::RustcDefaultCalls);
-        let mut control = defaults.build_controller(sess, matches);
-        let find_rules_state = Rc::clone(&self.find_rules_state);
-        control.after_analysis.callback =
-            Box::new(move |state| after_analysis(state, &mut *find_rules_state.borrow_mut()));
-        control.after_analysis.stop = rustc_driver::Compilation::Stop;
-        control
-    }
-}
-
-fn after_analysis<'a, 'gcx>(
-    state: &mut rustc_driver::driver::CompileState<'a, 'gcx>,
-    find_rules_state: &mut FindRulesState,
-) {
-    state.session.abort_if_errors();
-    let tcx = state.tcx.unwrap();
-    let source_map = tcx.sess.source_map();
-    let maybe_filemap = source_map.get_source_file(&syntax_pos::FileName::Real(PathBuf::from(
-        &find_rules_state.modified_file_name,
-    )));
-    let filemap = if let Some(f) = maybe_filemap {
-        f
-    } else {
-        return;
-    };
-    let span = find_rules_state.changed_span.to_span(&filemap);
-    let mut rule_finder = RuleFinder {
-        tcx,
-        changed_span: span,
-        candidate: Node::NotFound,
-        body_id: None,
-        current_item: None,
-    };
-    intravisit::walk_crate(&mut rule_finder, tcx.hir().krate());
-    match rule_finder.candidate {
-        Node::NotFound => {}
-        Node::Expr(expr, body_id, item) => {
-            let new_changed_span = ChangedSpan::from_span(expr.span, &filemap);
-            if let Some(ref changed_side_state) = find_rules_state.changed_side_state {
-                // Presence of changed_side_state means that we've already run on the changed
-                // version of the source. We're now running on the original source.
-                if find_rules_state.changed_span != new_changed_span {
-                    find_rules_state.changed_span = new_changed_span;
-                } else {
-                    find_rules_state.result = analyse_original_source(
-                        tcx,
-                        changed_side_state,
-                        expr,
-                        &find_rules_state.changed_span,
-                        find_rules_state.modified_source.clone(),
-                        body_id,
-                        item,
-                    );
-                }
+impl rustc_driver::Callbacks for FindRulesState {
+    fn after_analysis(&mut self, compiler: &interface::Compiler) -> bool {
+        compiler.session().abort_if_errors();
+        compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
+            let source_map = tcx.sess.source_map();
+            let maybe_filemap = source_map.get_source_file(&syntax_pos::FileName::Real(
+                PathBuf::from(&self.modified_file_name),
+            ));
+            let filemap = if let Some(f) = maybe_filemap {
+                f
             } else {
-                // First rustc invocation. We're running on the changed version of the source. Find
-                // which bit of the HIR tree has changed and select candidate placeholders.
-                find_rules_state.changed_span = new_changed_span;
-                find_rules_state.changed_side_state = Some(ChangedSideState {
-                    candidate_placeholders: PlaceholderCandidateFinder::find_placeholder_candidates(
-                        tcx,
-                        expr,
-                        |child_expr| RelativeSpan::new(child_expr.span, &filemap),
-                    ),
-                    required_paths: ReferencedPathsFinder::paths_in_expr(tcx, expr),
-                })
+                return false;
+            };
+            let span = self.changed_span.to_span(&filemap);
+            let mut rule_finder = RuleFinder {
+                tcx,
+                changed_span: span,
+                candidate: Node::NotFound,
+                body_id: None,
+                current_item: None,
+            };
+            intravisit::walk_crate(&mut rule_finder, tcx.hir().krate());
+            match rule_finder.candidate {
+                Node::NotFound => {}
+                Node::Expr(expr, body_id, item) => {
+                    let new_changed_span = ChangedSpan::from_span(expr.span, &filemap);
+                    if let Some(ref changed_side_state) = self.changed_side_state {
+                        // Presence of changed_side_state means that we've already run on the changed
+                        // version of the source. We're now running on the original source.
+                        if self.changed_span != new_changed_span {
+                            self.changed_span = new_changed_span;
+                        } else {
+                            self.result = analyse_original_source(
+                                tcx,
+                                changed_side_state,
+                                expr,
+                                &self.changed_span,
+                                self.modified_source.clone(),
+                                body_id,
+                                item,
+                            );
+                        }
+                    } else {
+                        // First rustc invocation. We're running on the changed version of the source. Find
+                        // which bit of the HIR tree has changed and select candidate placeholders.
+                        self.changed_span = new_changed_span;
+                        self.changed_side_state = Some(ChangedSideState {
+                            candidate_placeholders:
+                                PlaceholderCandidateFinder::find_placeholder_candidates(
+                                    tcx,
+                                    expr,
+                                    |child_expr| RelativeSpan::new(child_expr.span, &filemap),
+                                ),
+                            required_paths: ReferencedPathsFinder::paths_in_expr(tcx, expr),
+                        })
+                    }
+                }
             }
-        }
+            false // Don't continue
+        })
     }
 }
 
@@ -678,29 +660,26 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
             ));
         }
     };
-    let find_rules_state = Rc::new(RefCell::new(FindRulesState {
+    let mut find_rules_state = FindRulesState {
         modified_file_name: modified_file_name.to_owned(),
         modified_source: right.clone(),
         changed_span,
         changed_side_state: None,
         result: String::new(),
-    }));
+    };
 
     let mut args_index = 0;
     loop {
         // Run rustc on modified source to find HIR node that encloses changed code as well as
         // subnodes that will be candidates for placeholders.
-        let compiler_calls = Box::new(RCompilerCalls {
-            find_rules_state: find_rules_state.clone(),
-        });
         let invocation_info = compiler_invocations[args_index]
             .clone()
             .arg("--sysroot")
             .arg(crate::rustup_sysroot())
             .arg("--allow")
             .arg("dead_code");
-        invocation_info.run_compiler(compiler_calls, Some(box file_loader.clone()));
-        if find_rules_state.borrow().changed_side_state.is_none() {
+        invocation_info.run_compiler(&mut find_rules_state, Some(box file_loader.clone()))?;
+        if find_rules_state.changed_side_state.is_none() {
             // Span was not found with these compiler args, try the next command line.
             args_index += 1;
             if args_index >= compiler_invocations.len() {
@@ -710,7 +689,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
             }
             continue;
         }
-        let right_side_changed_span = find_rules_state.borrow().changed_span;
+        let right_side_changed_span = find_rules_state.changed_span;
 
         // Run rustc on original source to confirm matching HIR node exists and to match
         // placeholders.
@@ -719,12 +698,9 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
             modified_file_name.to_owned(),
             original_file_contents.to_owned(),
         );
-        let compiler_calls = Box::new(RCompilerCalls {
-            find_rules_state: find_rules_state.clone(),
-        });
-        invocation_info.run_compiler(compiler_calls, Some(original_file_loader));
+        invocation_info.run_compiler(&mut find_rules_state, Some(original_file_loader))?;
 
-        if right_side_changed_span == find_rules_state.borrow().changed_span {
+        if right_side_changed_span == find_rules_state.changed_span {
             // The changed span after examining the right side matched a full expression on the
             // left, so we're done.
             break;
@@ -733,8 +709,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
         // on the left. We need to go back and reprocess the right with the now widened span.
     }
 
-    let rule: String = find_rules_state.borrow().result.clone();
-    Ok(rule)
+    Ok(find_rules_state.result)
 }
 
 fn common_prefix(left: &str, right: &str) -> Option<usize> {
