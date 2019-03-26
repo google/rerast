@@ -569,8 +569,7 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReferencedPathsFinder<'a, 'gcx>
             | Def::Fn(_)
             | Def::Const(_)
             | Def::Static(..)
-            | Def::StructCtor(..)
-            | Def::VariantCtor(..) => {
+            | Def::Ctor(..) => {
                 let mut qualified_path = String::new();
                 for component in self.tcx.def_path(path.def.def_id()).data {
                     write!(qualified_path, "::{}", component.data.as_interned_str()).unwrap();
