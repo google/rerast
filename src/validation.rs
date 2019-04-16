@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::node_id_from_path;
+use super::hir_id_from_path;
 use crate::errors::ErrorWithSpan;
 use crate::rule_finder::StartMatch;
 use crate::rules::Rule;
@@ -77,8 +77,7 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for SearchValidator<'a, 'gcx> {
     }
 
     fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: hir::HirId, span: Span) {
-        if let Some(node_id) = node_id_from_path(qpath) {
-            let hir_id = self.state.tcx.hir().node_to_hir_id(node_id);
+        if let Some(hir_id) = hir_id_from_path(qpath) {
             if self.state.placeholders.contains(&hir_id)
                 && !self.state.bound_placeholders.insert(hir_id)
             {
@@ -102,8 +101,7 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReplacementValidator<'a, 'gcx> 
     }
 
     fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: hir::HirId, span: Span) {
-        if let Some(node_id) = node_id_from_path(qpath) {
-            let hir_id = self.state.tcx.hir().node_to_hir_id(node_id);
+        if let Some(hir_id) = hir_id_from_path(qpath) {
             if self.state.placeholders.contains(&hir_id)
                 && !self.state.bound_placeholders.contains(&hir_id)
             {

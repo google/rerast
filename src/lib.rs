@@ -105,7 +105,6 @@ use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
-use syntax::ast::NodeId;
 use syntax::source_map::FileLoader;
 use syntax::source_map::{self, SourceMap};
 use syntax::symbol::Symbol;
@@ -223,11 +222,11 @@ const RERAST_INTERNAL: &str = stringify!(
     }
 );
 
-pub(crate) fn node_id_from_path(q_path: &hir::QPath) -> Option<NodeId> {
+pub(crate) fn hir_id_from_path(q_path: &hir::QPath) -> Option<HirId> {
     use crate::hir::def::Def::*;
     if let hir::QPath::Resolved(None, ref path) = *q_path {
         match path.def {
-            Local(node_id) | Upvar(node_id, _, _) => Some(node_id),
+            Local(id) | Upvar(id, _, _) => Some(id),
             _ => None,
         }
     } else {

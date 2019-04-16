@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::node_id_from_path;
+use super::hir_id_from_path;
 use crate::code_substitution::CodeSubstitution;
 use crate::definitions::RerastDefinitions;
 use crate::rule_finder::StartMatch;
@@ -316,8 +316,7 @@ pub(crate) struct MatchState<'r, 'a, 'gcx: 'r + 'a + 'tcx, 'tcx: 'a> {
 
 impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     fn attempt_to_bind_expr(&mut self, qpath: &hir::QPath, expr: &'gcx hir::Expr) -> bool {
-        if let Some(node_id) = node_id_from_path(qpath) {
-            let hir_id = self.tcx.hir().node_to_hir_id(node_id);
+        if let Some(hir_id) = hir_id_from_path(qpath) {
             if self.placeholder_ids.contains(&hir_id) {
                 let p_ty = self.placeholder_types_by_id[&hir_id];
                 let c_ty = self.code_type_tables().expr_ty(expr);
@@ -378,8 +377,8 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     }
 
     // Checks if the supplied statement is a placeholder for a sequence of statements. e.g. `a();`
-    // where `a` is of type rerast::Statements. If it is, returns the NodeId of the placeholder.
-    fn opt_statements_placeholder_node_id(&self, stmt: &hir::Stmt) -> Option<NodeId> {
+    // where `a` is of type rerast::Statements. If it is, returns the HirId of the placeholder.
+    fn opt_statements_placeholder_hir_id(&self, stmt: &hir::Stmt) -> Option<HirId> {
         if let hir::StmtKind::Semi(ref expr) = stmt.node {
             if let hir::ExprKind::Call(ref function, _) = expr.node {
                 let fn_ty = self.rule_type_tables.expr_ty(function);
@@ -387,10 +386,9 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
                     return None;
                 }
                 if let hir::ExprKind::Path(ref path) = function.node {
-                    if let Some(node_id) = node_id_from_path(path) {
-                        let hir_id = self.tcx.hir().node_to_hir_id(node_id);
+                    if let Some(hir_id) = hir_id_from_path(path) {
                         if self.placeholder_ids.contains(&hir_id) {
-                            return Some(node_id);
+                            return Some(hir_id);
                         }
                     }
                 }
@@ -1033,9 +1031,7 @@ impl Matchable for hir::Path {
         code: &'gcx Self,
     ) -> bool {
         match (self.def, code.def) {
-            (hir::def::Def::Local(p_def_id), hir::def::Def::Local(c_def_id)) => {
-                let p_hir_id = state.tcx.hir().node_to_hir_id(p_def_id);
-                let c_hir_id = state.tcx.hir().node_to_hir_id(c_def_id);
+            (hir::def::Def::Local(p_hir_id), hir::def::Def::Local(c_hir_id)) => {
                 state
                     .match_placeholders
                     .matched_variable_decls
@@ -1200,13 +1196,12 @@ impl Matchable for hir::Block {
         // placeholder, look for matches at the end, then the placeholder takes whatever is left in
         // the middle. This means that we only support a single placeholder in a block.
         for (i, stmt) in self.stmts.iter().enumerate() {
-            if let Some(node_id) = state.opt_statements_placeholder_node_id(stmt) {
+            if let Some(hir_id) = state.opt_statements_placeholder_hir_id(stmt) {
                 if code.stmts.len() < self.stmts.len() + 1 {
                     return false;
                 }
                 let p_after = &self.stmts[i + 1..];
                 let c_after = &code.stmts[code.stmts.len() - p_after.len()..];
-                let hir_id = state.tcx.hir().node_to_hir_id(node_id);
                 if self.stmts[..i].attempt_match(state, &code.stmts[..i])
                     && p_after.attempt_match(state, c_after)
                     && state.placeholder_ids.contains(&hir_id)
@@ -1548,8 +1543,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
     // span with whatever was bound to the placeholder and return true.
     fn process_expr(&mut self, expr: &'gcx hir::Expr, placeholder_span: Span) -> bool {
         if let hir::ExprKind::Path(ref path) = expr.node {
-            if let Some(node_id) = node_id_from_path(path) {
-                let hir_id = self.tcx.hir().node_to_hir_id(node_id);
+            if let Some(hir_id) = hir_id_from_path(path) {
                 if let Some(placeholder) = self
                     .current_match
                     .match_placeholders
