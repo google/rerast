@@ -556,27 +556,12 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReferencedPathsFinder<'a, 'gcx>
     }
 
     fn visit_path(&mut self, path: &'gcx hir::Path, _: hir::HirId) {
-        use crate::hir::def::Def;
-        match path.def {
-            Def::Mod(_)
-            | Def::Struct(_)
-            | Def::Union(_)
-            | Def::Enum(_)
-            | Def::Variant(_)
-            | Def::Trait(_)
-            | Def::TyAlias(_)
-            | Def::ForeignTy(_)
-            | Def::Fn(_)
-            | Def::Const(_)
-            | Def::Static(..)
-            | Def::Ctor(..) => {
-                let mut qualified_path = String::new();
-                for component in self.tcx.def_path(path.def.def_id()).data {
-                    write!(qualified_path, "::{}", component.data.as_interned_str()).unwrap();
-                }
-                self.result.insert(qualified_path);
+        if let crate::hir::def::Res::Def(_, def_id) = path.res {
+            let mut qualified_path = String::new();
+            for component in self.tcx.def_path(def_id).data {
+                write!(qualified_path, "::{}", component.data.as_interned_str()).unwrap();
             }
-            _ => {}
+            self.result.insert(qualified_path);
         }
     }
 }

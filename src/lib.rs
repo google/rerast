@@ -223,10 +223,10 @@ const RERAST_INTERNAL: &str = stringify!(
 );
 
 pub(crate) fn hir_id_from_path(q_path: &hir::QPath) -> Option<HirId> {
-    use crate::hir::def::Def::*;
+    use crate::hir::def::Res;
     if let hir::QPath::Resolved(None, ref path) = *q_path {
-        match path.def {
-            Local(id) | Upvar(id, _, _) => Some(id),
+        match path.res {
+            Res::Local(id) | Res::Upvar(id, _, _) => Some(id),
             _ => None,
         }
     } else {

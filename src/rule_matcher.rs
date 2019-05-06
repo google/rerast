@@ -368,10 +368,13 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
         method_call_id: HirId,
         method_type_tables: &ty::TypeckTables<'gcx>,
     ) -> bool {
-        if let Some(&hir::def::Def::Method(method_id)) =
+        if let Some(Ok((hir::def::DefKind::Method, method_id))) =
             fn_type_tables.type_dependent_defs().get(fn_expr.hir_id)
         {
-            return method_type_tables.type_dependent_defs()[method_call_id].def_id() == method_id;
+            if let Ok((_, method_def_id)) = method_type_tables.type_dependent_defs()[method_call_id]
+            {
+                return method_def_id == *method_id;
+            }
         }
         false
     }
@@ -791,7 +794,7 @@ impl Matchable for hir::TraitRef {
         _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        self.path.def == code.path.def
+        self.path.res == code.path.res
     }
 }
 
@@ -1030,15 +1033,15 @@ impl Matchable for hir::Path {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        match (self.def, code.def) {
-            (hir::def::Def::Local(p_hir_id), hir::def::Def::Local(c_hir_id)) => {
+        match (self.res, code.res) {
+            (hir::def::Res::Local(p_hir_id), hir::def::Res::Local(c_hir_id)) => {
                 state
                     .match_placeholders
                     .matched_variable_decls
                     .get(&p_hir_id)
                     == Some(&c_hir_id)
             }
-            _ => self.def == code.def,
+            _ => self.res == code.res,
         }
     }
 }
