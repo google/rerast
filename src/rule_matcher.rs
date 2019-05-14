@@ -541,14 +541,6 @@ impl Matchable for hir::Expr {
                 &ExprKind::Repeat(ref c_expr, ref c_const),
             ) => p_expr.attempt_match(state, c_expr) && p_const.attempt_match(state, c_const),
             (
-                &ExprKind::If(ref p_cond, ref p_block, ref p_else),
-                &ExprKind::If(ref c_cond, ref c_block, ref c_else),
-            ) => {
-                p_cond.attempt_match(state, c_cond)
-                    && p_block.attempt_match(state, c_block)
-                    && p_else.attempt_match(state, c_else)
-            }
-            (
                 &ExprKind::Match(ref p_expr, ref p_arms, ref p_source),
                 &ExprKind::Match(ref c_expr, ref c_arms, ref c_source),
             ) => {
@@ -621,6 +613,9 @@ impl Matchable for hir::Expr {
                 p_expr.attempt_match(state, c_expr)
             }
             (&ExprKind::Box(ref p_expr), &ExprKind::Box(ref c_expr)) => {
+                p_expr.attempt_match(state, c_expr)
+            }
+            (&ExprKind::DropTemps(ref p_expr), &ExprKind::DropTemps(ref c_expr)) => {
                 p_expr.attempt_match(state, c_expr)
             }
             (&ExprKind::Path(ref p_path), &ExprKind::Path(ref c_path)) => {
