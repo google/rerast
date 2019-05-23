@@ -1569,9 +1569,29 @@ mod tests {
         );
     }
 
-    // Checks matching of ?. Also checks that the replacement can be a macro invocation.
+    // Checks matching of ?.
     #[test]
     fn match_question_mark() {
+        TestBuilder::new()
+            .common("pub fn get_result() -> Result<i32, i32> {Ok(42)}")
+            .rule(
+                r#"fn r<T, E: std::fmt::Debug>(x: Result<T, E>) -> Result<T, E> {
+                     replace!(x? => x.unwrap());
+                     unreachable!();
+                 }"#,
+            )
+            .input("fn f1() -> Result<i32, i32> {get_result()?; Ok(1)}")
+            .expect("fn f1() -> Result<i32, i32> {get_result().unwrap(); Ok(1)}");
+    }
+
+    // This test stopped working around nightly 2019-05-20, in the range
+    // a9ec99f42..d35181ad8. The problem seems to be with replacing something
+    // with the try! macro. Not sure what's up with it, but it doesn't seem like
+    // a high priority as I'm not sure why anyone would want to migrate to a
+    // deprecated syntax.
+    #[test]
+    #[ignore]
+    fn replace_with_old_try_macro() {
         TestBuilder::new()
             .edition("2015")
             .common("pub fn get_result() -> Result<i32, i32> {Ok(42)}")
@@ -1583,6 +1603,17 @@ mod tests {
             )
             .input("fn f1() -> Result<i32, i32> {get_result()?; Ok(1)}")
             .expect("fn f1() -> Result<i32, i32> {try!(get_result()); Ok(1)}");
+    }
+
+    // Makes sure the replacement can be a macro invocation and that it can
+    // still contain placeholders.
+    #[test]
+    fn replace_with_macro_invocation() {
+        TestBuilder::new()
+        .common("macro_rules! ff { ($e:expr) => {$e + 2}; }")
+        .rule("fn r(i: i32) { replace!(i + 2 => ff!(i)); }")
+        .input(r#"fn f() {println!("Answer is: {}", 40 + 2);}"#)
+        .expect(r#"fn f() {println!("Answer is: {}", ff!(40));}"#)
     }
 
     #[test]
