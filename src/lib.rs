@@ -156,7 +156,7 @@ impl CompilerInvocationInfo {
         for (k, v) in &self.env {
             std::env::set_var(k, v);
         }
-        syntax::with_globals(|| {
+        syntax::with_default_globals(|| {
             rustc_driver::run_compiler(&self.args, callbacks, file_loader, None)
         })?;
         for k in self.env.keys() {
@@ -1610,10 +1610,10 @@ mod tests {
     #[test]
     fn replace_with_macro_invocation() {
         TestBuilder::new()
-        .common("macro_rules! ff { ($e:expr) => {$e + 2}; }")
-        .rule("fn r(i: i32) { replace!(i + 2 => ff!(i)); }")
-        .input(r#"fn f() {println!("Answer is: {}", 40 + 2);}"#)
-        .expect(r#"fn f() {println!("Answer is: {}", ff!(40));}"#)
+            .common("macro_rules! ff { ($e:expr) => {$e + 2}; }")
+            .rule("fn r(i: i32) { replace!(i + 2 => ff!(i)); }")
+            .input(r#"fn f() {println!("Answer is: {}", 40 + 2);}"#)
+            .expect(r#"fn f() {println!("Answer is: {}", ff!(40));}"#)
     }
 
     #[test]

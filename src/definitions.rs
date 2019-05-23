@@ -31,6 +31,7 @@ pub(crate) struct RerastDefinitions<'gcx> {
 pub(crate) struct RerastDefinitionsFinder<'a, 'gcx: 'a> {
     tcx: TyCtxt<'a, 'gcx, 'gcx>,
     rerast_mod_symbol: Symbol,
+    rerast_types_symbol: Symbol,
     inside_rerast_mod: bool,
     definitions: Option<RerastDefinitions<'gcx>>,
 }
@@ -46,6 +47,7 @@ impl<'a, 'gcx> RerastDefinitionsFinder<'a, 'gcx> {
         let mut finder = RerastDefinitionsFinder {
             tcx,
             rerast_mod_symbol: Symbol::intern(super::RERAST_INTERNAL_MOD_NAME),
+            rerast_types_symbol: Symbol::intern("rerast_types"),
             inside_rerast_mod: false,
             definitions: None,
         };
@@ -75,7 +77,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RerastDefinitionsFinder<'a, '
 
     fn visit_body(&mut self, body: &'gcx hir::Body) {
         let fn_id = self.tcx.hir().body_owner_def_id(body.id());
-        if self.tcx.item_name(fn_id) == "rerast_types" {
+        if self.tcx.item_name(fn_id) == self.rerast_types_symbol {
             let tables = self.tcx.typeck_tables_of(fn_id);
             let mut types = body
                 .arguments
