@@ -23,7 +23,7 @@ use rustc::infer::{self, InferCtxt};
 use rustc::traits::ObligationCause;
 use rustc::ty::subst::Subst;
 use rustc::ty::{self, TyCtxt};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::mem;
 use syntax;
@@ -636,9 +636,7 @@ impl Matchable for hir::Expr {
                 }
                 false
             }
-            _ => {
-                false
-            }
+            _ => false,
         };
         if !result {
             debug!(
@@ -1183,23 +1181,36 @@ impl Matchable for hir::Block {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
+        if !self.stmts.attempt_match(state, &code.stmts) {
+            return false;
+        }
         // The trailing expression in a block, if present, is never consumed by a placeholder since
-        // it's not a statement, so match it first.
+        // it's not a statement, so match it separately.
         if !self.expr.attempt_match(state, &code.expr) {
             return false;
         }
+        true
+    }
+}
+
+impl Matchable for Vec<hir::Stmt> {
+    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+        &self,
+        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
+        code: &'gcx Self,
+    ) -> bool {
         // Ideally we should do what regex matching does and build an FSA or something. For now we
         // just apply a more basic algorithm. Look for matches at the start, if we find a
         // placeholder, look for matches at the end, then the placeholder takes whatever is left in
         // the middle. This means that we only support a single placeholder in a block.
-        for (i, stmt) in self.stmts.iter().enumerate() {
+        for (i, stmt) in self.iter().enumerate() {
             if let Some(hir_id) = state.opt_statements_placeholder_hir_id(stmt) {
-                if code.stmts.len() < self.stmts.len() + 1 {
+                if code.len() < self.len() + 1 {
                     return false;
                 }
-                let p_after = &self.stmts[i + 1..];
-                let c_after = &code.stmts[code.stmts.len() - p_after.len()..];
-                if self.stmts[..i].attempt_match(state, &code.stmts[..i])
+                let p_after = &self[i + 1..];
+                let c_after = &code[code.len() - p_after.len()..];
+                if self[..i].attempt_match(state, &code[..i])
                     && p_after.attempt_match(state, c_after)
                     && state.placeholder_types_by_id.contains_key(&hir_id)
                 {
@@ -1208,7 +1219,7 @@ impl Matchable for hir::Block {
                     state.match_placeholders.placeholders_by_id.insert(
                         hir_id,
                         Placeholder::new(PlaceholderContents::Statements(
-                            &code.stmts[i..code.stmts.len() - p_after.len()],
+                            &code[i..code.len() - p_after.len()],
                         )),
                     );
                     return true;
@@ -1217,7 +1228,7 @@ impl Matchable for hir::Block {
             }
         }
         // No placeholder was found, just match statements 1:1
-        self.stmts.attempt_match(state, &code.stmts)
+        self.attempt_match(state, &code)
     }
 }
 

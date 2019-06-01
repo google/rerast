@@ -2107,6 +2107,21 @@ mod tests {
         );
     }
 
+    // Match a block where the final expression contains a reference to a
+    // variable defined earlier in the block. We used to get this wrong by
+    // processing the final expression before the contents of the block. This is
+    // kind of rule is not especially likely to be written by a user, but can
+    // easily result from macro expansion.
+    #[test]
+    fn defined_var_referenced_in_block_expr() {
+        check(
+            "",
+            "fn rule() {replace!({let a = 0; a + 1} => {let a = 0; a + 2});}",
+            "fn c() -> i32 {{let x = 0;x + 1}}",
+            "fn c() -> i32 {{let x = 0; x + 2}}",
+        );
+    }
+
     #[test]
     fn file_and_line_macros() {
         check(
