@@ -14,7 +14,7 @@
 
 use crate::rule_finder::StartMatch;
 use rustc::hir::{self, HirId};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::vec::Vec;
 use syntax::symbol::Symbol;
 
@@ -31,9 +31,6 @@ pub(crate) struct Rule<'gcx, T: StartMatch> {
     // declared as arguments to the function, so the search and replace pattern can both reference
     // the same placeholder variable.
     pub(crate) declared_name_hir_ids: HashMap<Symbol, HirId>,
-    // IDs of the arguments to the function in which the rule was declared. When references to these
-    // IDs are encountered in the search pattern, they should be treated as placeholders.
-    pub(crate) placeholder_ids: HashSet<HirId>,
 }
 
 #[derive(Debug)]

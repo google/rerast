@@ -151,7 +151,6 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
                 match_placeholders: MatchPlaceholders::new(),
                 placeholder_types_by_id,
                 rerast_definitions: self.rerast_definitions,
-                placeholder_ids: &rule.placeholder_ids,
                 bindings_can_match_patterns: T::bindings_can_match_patterns(),
                 debug_active: self.debug_active,
             };
@@ -305,7 +304,6 @@ pub(crate) struct MatchState<'r, 'a, 'gcx: 'r + 'a + 'tcx, 'tcx: 'a> {
     // instead of on Match because it contains types that don't live as long as the match.
     placeholder_types_by_id: HashMap<HirId, ty::Ty<'tcx>>,
     rerast_definitions: RerastDefinitions<'gcx>,
-    placeholder_ids: &'r HashSet<HirId>,
     // Whether bindings within a pattern are permitted to match any pattern. Otherwise, bindings are
     // only permitted to match bindings. This is enabled within replace_pattern, since the bindings
     // are only used within the pattern, not also as expressions, so binding to a pattern is
@@ -317,8 +315,7 @@ pub(crate) struct MatchState<'r, 'a, 'gcx: 'r + 'a + 'tcx, 'tcx: 'a> {
 impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     fn attempt_to_bind_expr(&mut self, qpath: &hir::QPath, expr: &'gcx hir::Expr) -> bool {
         if let Some(hir_id) = hir_id_from_path(qpath) {
-            if self.placeholder_ids.contains(&hir_id) {
-                let p_ty = self.placeholder_types_by_id[&hir_id];
+            if let Some(&p_ty) = self.placeholder_types_by_id.get(&hir_id) {
                 let c_ty = self.code_type_tables().expr_ty(expr);
                 // We check the type of the expression in our code both with and without
                 // adjustment. It'd be nice if we didn't have to do this. I'm not sure it actually
@@ -390,7 +387,7 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
                 }
                 if let hir::ExprKind::Path(ref path) = function.node {
                     if let Some(hir_id) = hir_id_from_path(path) {
-                        if self.placeholder_ids.contains(&hir_id) {
+                        if self.placeholder_types_by_id.contains_key(&hir_id) {
                             return Some(hir_id);
                         }
                     }
@@ -1202,7 +1199,7 @@ impl Matchable for hir::Block {
                 let c_after = &code.stmts[code.stmts.len() - p_after.len()..];
                 if self.stmts[..i].attempt_match(state, &code.stmts[..i])
                     && p_after.attempt_match(state, c_after)
-                    && state.placeholder_ids.contains(&hir_id)
+                    && state.placeholder_types_by_id.contains_key(&hir_id)
                 {
                     // TODO: Refactor this insert and the other one to a common location so
                     // that both check there isn't already something there.

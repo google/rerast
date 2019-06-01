@@ -114,21 +114,11 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
         ) {
             let search = T::extract_root(search_block)?;
             let replace = T::extract_root(replace_block)?;
-            let placeholder_ids = self
-                .tcx
-                .hir()
-                .body(body_id)
-                .arguments
-                .iter()
-                .map(|arg| arg.pat.hir_id)
-                .collect();
-
             let rule = Rule {
                 search,
                 replace,
                 body_id,
                 declared_name_hir_ids: DeclaredNamesFinder::find(self.tcx, search),
-                placeholder_ids,
             };
             rule.validate(self.tcx)?;
             T::add_rule(rule, &mut self.rules);
