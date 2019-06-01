@@ -132,12 +132,35 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
         let maybe_match_placeholders = self.tcx.infer_ctxt().enter(|infcx| {
             let tcx = infcx.tcx;
             let substs = infcx.fresh_substs_for_item(tcx.def_span(rule_fn_id), rule_fn_id);
-            let placeholder_types_by_id = rule_body
+            let mut placeholder_ids: Vec<_> = rule_body
                 .arguments
                 .iter()
-                .map(|arg| {
-                    (arg.pat.hir_id, {
-                        let ty = rule_tables.node_type(arg.hir_id);
+                .map(|arg| arg.pat.hir_id)
+                .collect();
+
+            // Allow any variable declarations at the start or the rule block to
+            // serve as placeholders in addition to the funciton arguments. This
+            // is necssary since async functions transform the supplied code
+            // into this form. e.g. if the async function has an argument r,
+            // then the function will contain a block with the first statement
+            // being let r = r;
+            if let hir::ExprKind::Block(block, ..) = &rule_body.value.node {
+                for stmt in &block.stmts {
+                    if let hir::StmtKind::Local(local) = &stmt.node {
+                        if let hir::PatKind::Binding(_, hir_id, ..) = &local.pat.node {
+                            placeholder_ids.push(*hir_id);
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            let placeholder_types_by_id = placeholder_ids
+                .iter()
+                .map(|hir_id| {
+                    (*hir_id, {
+                        let ty = rule_tables.node_type(*hir_id);
                         ty.subst(tcx, substs)
                     })
                 })

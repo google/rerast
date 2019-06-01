@@ -612,6 +612,7 @@ mod tests {
                #![feature(box_patterns)]
                #![feature(slice_patterns)]
                #![feature(exclusive_range_pattern)]
+               #![feature(async_await)]
                "#
             .to_owned()
                 + header1
@@ -2119,6 +2120,20 @@ mod tests {
             "fn rule() {replace!({let a = 0; a + 1} => {let a = 0; a + 2});}",
             "fn c() -> i32 {{let x = 0;x + 1}}",
             "fn c() -> i32 {{let x = 0; x + 2}}",
+        );
+    }
+
+    // Functions declared async get restructured, even if they don't contain any
+    // actual async code. In particular all the arguments get shadowed by locals
+    // with the same name. If we don't handle these locals properly then
+    // placeholders won't function.
+    #[test]
+    fn rule_in_async_fn() {
+        check(
+            "",
+            "pub async fn rule1(r: i32) {replace!(r * 2 => 2 * r);}",
+            "fn c(x: i32) -> i32 {x * 2}",
+            "fn c(x: i32) -> i32 {2 * x}",
         );
     }
 
