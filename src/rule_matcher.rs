@@ -637,13 +637,15 @@ impl Matchable for hir::Expr {
                 false
             }
             _ => {
-                debug!(
-                    state,
-                    "Expression:   {:?}\ndidn't match: {:?}", code.node, self.node
-                );
                 false
             }
         };
+        if !result {
+            debug!(
+                state,
+                "Expression:   {:?}\ndidn't match: {:?}", code.node, self.node
+            );
+        }
         result && all_expansions_equal(self.span, code.span())
     }
 }
