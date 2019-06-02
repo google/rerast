@@ -14,6 +14,7 @@
 
 use itertools::Itertools;
 use std::collections::{hash_map, HashMap};
+use std::fmt::Debug;
 use std::io;
 use std::path::PathBuf;
 use syntax::source_map::FileLoader;
@@ -51,6 +52,7 @@ impl SpanT for LocalSpan {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct SourceChunk<'a> {
     source: &'a str,
     start_pos: BytePos,
@@ -133,13 +135,19 @@ impl CodeSubstitution<Span> {
 // Take the code represented by base_span and apply all the substitutions, returning the
 // resulting code. All spans for the supplied substitutions must be within base_span and must be
 // non-overlapping.
-pub(crate) fn apply_substitutions<'a, S: SpanT + Sized>(
+pub(crate) fn apply_substitutions<'a, S: SpanT + Sized + Debug>(
     substitutions: &[CodeSubstitution<S>],
     source_chunk: SourceChunk<'a>,
 ) -> String {
     let mut output = String::new();
     let mut span_lo = source_chunk.start_pos;
     for substitution in substitutions {
+        if substitution.span.lo() < span_lo {
+            panic!(
+                "Bad substitutions: {:#?}\nFor source: {:?}",
+                substitutions, source_chunk
+            );
+        }
         output.push_str(source_chunk.get_snippet(span_lo, substitution.span.lo()));
         let should_add_parenthesis =
             substitution.needs_parenthesis && !substitution.code_is_single_tree;
