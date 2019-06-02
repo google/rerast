@@ -116,7 +116,6 @@ where
 
     fn walk_expr_children(&mut self, expr: &'gcx hir::Expr) {
         if let hir::ExprKind::Call(ref _expr_fn, ref args) = expr.node {
-            println!("** ExprCall: {:?}", expr.node);
             // Ignore expr_fn as a candidate, just consider the args.
             for arg in args {
                 use rustc::hir::intravisit::Visitor;
