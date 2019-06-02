@@ -116,3 +116,24 @@ cargo +nightly rerast --rules_file=rewrite.rs --force --targets tests --file tes
 
 Afterwhich a simple search and replace can rename `project_foo` back to `project` and the argument
 can be dropped.
+
+### Replace await! macro with .await
+Since await can only be used from within an async function, you'll need to
+delcare your rule function async. This cannot be done from the command line, so
+you'll need to create a rule file with the following contents:
+```
+async fn rule1<T: std::future::Future>(r: T) {
+  replace!(await!(r) => r.await)
+}
+```
+
+### Replace yield
+Since yield can only be used from within a generator, you'll need to delcare
+your replace rule inside a generator. For example:
+```
+fn r1(x: i32) {
+    let _ = || {
+        replace!(yield x => yield x + 1);
+    };
+}
+```
