@@ -24,6 +24,7 @@ pub(crate) struct Rule<'gcx, T: StartMatch> {
     pub(crate) replace: &'gcx T,
     // The method in which the rule is defined.
     pub(crate) body_id: hir::BodyId,
+    pub(crate) placeholder_ids: Vec<HirId>,
     // Maps from the names of declared variables (which must be unique within the search pattern) to
     // their HirId. This is used to pair up variables in the search pattern with their counterparts
     // in the replacement pattern. This is necessary since as far as rustc is concerned, they're

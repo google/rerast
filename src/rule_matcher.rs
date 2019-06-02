@@ -127,36 +127,12 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
     ) -> Option<Match<'r, 'gcx, T>> {
         let rule_fn_id = self.tcx.hir().body_owner_def_id(rule.body_id);
         let rule_tables = self.tcx.body_tables(rule.body_id);
-        let rule_body = self.tcx.hir().body(rule.body_id);
 
         let maybe_match_placeholders = self.tcx.infer_ctxt().enter(|infcx| {
             let tcx = infcx.tcx;
             let substs = infcx.fresh_substs_for_item(tcx.def_span(rule_fn_id), rule_fn_id);
-            let mut placeholder_ids: Vec<_> = rule_body
-                .arguments
-                .iter()
-                .map(|arg| arg.pat.hir_id)
-                .collect();
-
-            // Allow any variable declarations at the start or the rule block to
-            // serve as placeholders in addition to the funciton arguments. This
-            // is necssary since async functions transform the supplied code
-            // into this form. e.g. if the async function has an argument r,
-            // then the function will contain a block with the first statement
-            // being let r = r;
-            if let hir::ExprKind::Block(block, ..) = &rule_body.value.node {
-                for stmt in &block.stmts {
-                    if let hir::StmtKind::Local(local) = &stmt.node {
-                        if let hir::PatKind::Binding(_, hir_id, ..) = &local.pat.node {
-                            placeholder_ids.push(*hir_id);
-                        }
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            let placeholder_types_by_id = placeholder_ids
+            let placeholder_types_by_id = rule
+                .placeholder_ids
                 .iter()
                 .map(|hir_id| {
                     (*hir_id, {
@@ -636,6 +612,9 @@ impl Matchable for hir::Expr {
                 p_expr.attempt_match(state, c_expr)
             }
             (&ExprKind::DropTemps(ref p_expr), &ExprKind::DropTemps(ref c_expr)) => {
+                p_expr.attempt_match(state, c_expr)
+            }
+            (&ExprKind::Yield(ref p_expr), &ExprKind::Yield(ref c_expr)) => {
                 p_expr.attempt_match(state, c_expr)
             }
             (&ExprKind::Path(ref p_path), &ExprKind::Path(ref c_path)) => {

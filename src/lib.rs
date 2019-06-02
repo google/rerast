@@ -613,6 +613,7 @@ mod tests {
                #![feature(slice_patterns)]
                #![feature(exclusive_range_pattern)]
                #![feature(async_await)]
+               #![feature(generators)]
                "#
             .to_owned()
                 + header1
@@ -2148,6 +2149,19 @@ mod tests {
                }"#,
             r#"fn f1() {println!("{}{}{}", file!(), line!(), foo!());}"#,
             r#"fn f1() {println!("{}{}{}", "filename", 42, "foo-filename");}"#,
+        );
+    }
+
+    // Checks that we can match yield expressions. Also checks that a rule
+    // declared inside a generator can still make use of placeholders out in the
+    // function declaration.
+    #[test]
+    fn yeild_and_rule_in_generator() {
+        check(
+            "",
+            "fn r1(x: i32) {let _ = || {replace!(yield x => yield x + 1);};}",
+            "fn f1() {let _ = || {yield 1i32;};}",
+            "fn f1() {let _ = || {yield 1i32 + 1;};}",
         );
     }
 

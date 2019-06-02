@@ -30,7 +30,7 @@ pub(crate) struct RuleFinder<'a, 'gcx: 'a> {
     rerast_definitions: RerastDefinitions<'gcx>,
     rules_mod_symbol: Symbol,
     rules: Rules<'gcx>,
-    body_id: Option<hir::BodyId>,
+    body_ids: Vec<hir::BodyId>,
     in_rules_module: bool,
     errors: Vec<ErrorWithSpan>,
 }
@@ -46,7 +46,7 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
             rerast_definitions,
             rules_mod_symbol: Symbol::intern(super::RULES_MOD_NAME),
             rules: Rules::new(),
-            body_id: None,
+            body_ids: Vec::new(),
             in_rules_module: false,
             errors: Vec::new(),
         };
@@ -63,13 +63,12 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
         &mut self,
         arg_ty: ty::Ty<'gcx>,
         arms: &'gcx [hir::Arm],
-        body_id: hir::BodyId,
         arg_ty_span: Span,
     ) -> Result<(), Vec<ErrorWithSpan>> {
-        if self.maybe_add_typed_rule::<hir::Expr>(arg_ty, arms, body_id)?
-            || self.maybe_add_typed_rule::<hir::Pat>(arg_ty, arms, body_id)?
-            || self.maybe_add_typed_rule::<hir::TraitRef>(arg_ty, arms, body_id)?
-            || self.maybe_add_typed_rule::<hir::Ty>(arg_ty, arms, body_id)?
+        if self.maybe_add_typed_rule::<hir::Expr>(arg_ty, arms)?
+            || self.maybe_add_typed_rule::<hir::Pat>(arg_ty, arms)?
+            || self.maybe_add_typed_rule::<hir::TraitRef>(arg_ty, arms)?
+            || self.maybe_add_typed_rule::<hir::Ty>(arg_ty, arms)?
         {
             Ok(())
         } else {
@@ -86,7 +85,6 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
         &mut self,
         arg_ty: ty::Ty<'gcx>,
         arms: &'gcx [hir::Arm],
-        body_id: hir::BodyId,
     ) -> Result<bool, Vec<ErrorWithSpan>> {
         // Given some arms of a match statement, returns the block for arm_name if any.
         fn get_arm(arms: &[hir::Arm], arm_name: Symbol) -> Option<&hir::Block> {
@@ -108,6 +106,34 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
             // This is a rule of a different type
             return Ok(false);
         }
+        let mut placeholder_ids = Vec::new();
+        for body_id in &self.body_ids {
+            let body = self.tcx.hir().body(*body_id);
+            for arg in &body.arguments {
+                placeholder_ids.push(arg.pat.hir_id);
+            }
+            // Allow any variable declarations at the start or the rule block to
+            // serve as placeholders in addition to the funciton arguments. This
+            // is necssary since async functions transform the supplied code
+            // into this form. e.g. if the async function has an argument r,
+            // then the function will contain a block with the first statement
+            // being let r = r;
+            if let hir::ExprKind::Block(block, ..) = &body.value.node {
+                for stmt in &block.stmts {
+                    if let hir::StmtKind::Local(local) = &stmt.node {
+                        if let hir::PatKind::Binding(_, hir_id, ..) = &local.pat.node {
+                            placeholder_ids.push(*hir_id);
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        let body_id = match self.body_ids.last() {
+            Some(x) => *x,
+            None => return Ok(false),
+        };
         if let (Some(search_block), Some(replace_block)) = (
             get_arm(arms, self.rerast_definitions.search_symbol),
             get_arm(arms, self.rerast_definitions.replace_symbol),
@@ -118,6 +144,7 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
                 search,
                 replace,
                 body_id,
+                placeholder_ids,
                 declared_name_hir_ids: DeclaredNamesFinder::find(self.tcx, search),
             };
             rule.validate(self.tcx)?;
@@ -157,13 +184,13 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
         use crate::hir::ExprKind;
         if let ExprKind::Match(ref match_expr, ref arms, _) = expr.node {
             if let ExprKind::MethodCall(ref _name, ref _tys, ref args) = match_expr.node {
-                if let Some(body_id) = self.body_id {
+                if let Some(&body_id) = self.body_ids.last() {
                     let type_tables = self
                         .tcx
                         .typeck_tables_of(self.tcx.hir().body_owner_def_id(body_id));
                     let arg0 = &args[0];
                     let arg_ty = type_tables.node_type(arg0.hir_id);
-                    if let Err(errors) = self.maybe_add_rule(arg_ty, arms, body_id, arg0.span) {
+                    if let Err(errors) = self.maybe_add_rule(arg_ty, arms, arg0.span) {
                         self.errors.extend(errors);
                     }
                     // Don't walk deeper into this expression.
@@ -178,10 +205,9 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
         if !self.in_rules_module {
             return;
         }
-        let old_body_id = self.body_id;
-        self.body_id = Some(body.id());
+        self.body_ids.push(body.id());
         intravisit::walk_body(self, body);
-        self.body_id = old_body_id;
+        self.body_ids.pop();
     }
 }
 
