@@ -848,12 +848,15 @@ impl Matchable for hir::Pat {
                         Placeholder::new(PlaceholderContents::Pattern(code)),
                     );
                     true
-                } else if let Binding(c_mode, c_hir_id, ref _c_name, ref c_pat) = code.node {
+                } else if let Binding(c_mode, c_hir_id, ref c_name, ref c_pat) = code.node {
                     if p_mode == c_mode && p_pat.is_none() && c_pat.is_none() {
-                        state
-                            .match_placeholders
-                            .matched_variable_decls
-                            .insert(p_hir_id, c_hir_id);
+                        state.match_placeholders.matched_variable_decls.insert(
+                            p_hir_id,
+                            MatchedVariableDecl {
+                                code_hir_id: c_hir_id,
+                                name: c_name.to_string(),
+                            },
+                        );
                         true
                     } else {
                         false
@@ -1028,13 +1031,12 @@ impl Matchable for hir::Path {
         code: &'gcx Self,
     ) -> bool {
         match (self.res, code.res) {
-            (hir::def::Res::Local(p_hir_id), hir::def::Res::Local(c_hir_id)) => {
-                state
-                    .match_placeholders
-                    .matched_variable_decls
-                    .get(&p_hir_id)
-                    == Some(&c_hir_id)
-            }
+            (hir::def::Res::Local(p_hir_id), hir::def::Res::Local(c_hir_id)) => state
+                .match_placeholders
+                .matched_variable_decls
+                .get(&p_hir_id)
+                .map(|matched_var_decl| matched_var_decl.code_hir_id == c_hir_id)
+                .unwrap_or(false),
             _ => self.res == code.res,
         }
     }
@@ -1089,10 +1091,13 @@ impl Matchable for hir::Item {
         state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
         code: &'gcx Self,
     ) -> bool {
-        state
-            .match_placeholders
-            .matched_variable_decls
-            .insert(self.hir_id, code.hir_id);
+        state.match_placeholders.matched_variable_decls.insert(
+            self.hir_id,
+            MatchedVariableDecl {
+                code_hir_id: code.hir_id,
+                name: code.ident.to_string(),
+            },
+        );
         self.attrs.attempt_match(state, &*code.attrs)
             && self.vis.attempt_match(state, &code.vis)
             && self.node.attempt_match(state, &code.node)
@@ -1334,12 +1339,19 @@ impl<'r, 'a, 'gcx, 'tcx, T: StartMatch> Match<'r, 'gcx, T> {
 }
 
 #[derive(Debug)]
+pub(crate) struct MatchedVariableDecl {
+    // The ID of the variable in the user code.
+    code_hir_id: HirId,
+    name: String,
+}
+
+#[derive(Debug)]
 pub(crate) struct MatchPlaceholders<'r, 'gcx: 'r> {
     // Maps the IDs of placeholders in arguments, to their state (unbound, bound to expression
     // etc).
     placeholders_by_id: HashMap<HirId, Placeholder<'r, 'gcx>>,
     // Maps from variables declared in the search pattern to variables declared in the code.
-    matched_variable_decls: HashMap<HirId, HirId>,
+    matched_variable_decls: HashMap<HirId, MatchedVariableDecl>,
 }
 
 impl<'r, 'a, 'gcx, 'tcx> MatchPlaceholders<'r, 'gcx> {
@@ -1626,7 +1638,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
                     .get_placeholder(*search_hir_id)
                 {
                     self.process_placeholder(placeholder, pat.span);
-                } else if let Some(&code_hir_id) = self
+                } else if let Some(matched_var_decl) = self
                     .current_match
                     .match_placeholders
                     .matched_variable_decls
@@ -1635,10 +1647,18 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
                     // TODO: Would the above be clearer if the RHS was extracted to a method on
                     // Match?
 
-                    // Record the mapping so that we can replace references to the variable as well.
-                    self.substitute_hir_ids.insert(hir_id, code_hir_id);
-                    let code = self.hir_id_snippet(code_hir_id);
-                    self.result.push(CodeSubstitution::new(ident.span, code));
+                    let code = self.hir_id_snippet(matched_var_decl.code_hir_id);
+                    // We only replace variable names if their code snippet
+                    // matches their name. Otherwise we risk trying to replace
+                    // variables in compiler generated code, which generally has
+                    // large spans that encompas the whole expression.
+                    if code == matched_var_decl.name {
+                        // Record the mapping so that we can replace references
+                        // to the variable as well.
+                        self.substitute_hir_ids
+                            .insert(hir_id, matched_var_decl.code_hir_id);
+                        self.result.push(CodeSubstitution::new(ident.span, code));
+                    }
                 }
             }
         }

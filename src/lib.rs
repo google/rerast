@@ -614,6 +614,7 @@ mod tests {
                #![feature(exclusive_range_pattern)]
                #![feature(async_await)]
                #![feature(generators)]
+               #![feature(await_macro)]
                "#
             .to_owned()
                 + header1
@@ -1586,13 +1587,7 @@ mod tests {
             .expect("fn f1() -> Result<i32, i32> {get_result().unwrap(); Ok(1)}");
     }
 
-    // This test stopped working around nightly 2019-05-20, in the range
-    // a9ec99f42..d35181ad8. The problem seems to be with replacing something
-    // with the try! macro. Not sure what's up with it, but it doesn't seem like
-    // a high priority as I'm not sure why anyone would want to migrate to a
-    // deprecated syntax.
     #[test]
-    #[ignore]
     fn replace_with_old_try_macro() {
         TestBuilder::new()
             .edition("2015")
@@ -2163,6 +2158,16 @@ mod tests {
             "fn f1() {let _ = || {yield 1i32;};}",
             "fn f1() {let _ = || {yield 1i32 + 1;};}",
         );
+    }
+
+    #[test]
+    fn replace_await_macro() {
+        check(
+            "pub async fn a() -> i32 {unreachable!();}",
+            "pub async fn r1<T: std::future::Future>(r: T) {replace!(await!(r) => r.await)}",
+            "pub async fn f1() -> i32 {await!(a()) * 2}",
+            "pub async fn f1() -> i32 {a().await * 2}",
+        )
     }
 
     #[test]
