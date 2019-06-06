@@ -226,7 +226,7 @@ pub(crate) fn hir_id_from_path(q_path: &hir::QPath) -> Option<HirId> {
     use crate::hir::def::Res;
     if let hir::QPath::Resolved(None, ref path) = *q_path {
         match path.res {
-            Res::Local(id) | Res::Upvar(id, _, _) => Some(id),
+            Res::Local(id) => Some(id),
             _ => None,
         }
     } else {
