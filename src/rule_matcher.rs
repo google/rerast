@@ -1277,7 +1277,7 @@ impl Matchable for hir::TypeBinding {
         code: &'gcx Self,
     ) -> bool {
         self.ident.name.attempt_match(state, &code.ident.name)
-            && self.ty.attempt_match(state, &code.ty)
+            && self.ty().attempt_match(state, &code.ty())
     }
 }
 
