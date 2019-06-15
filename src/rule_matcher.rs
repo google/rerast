@@ -43,26 +43,26 @@ macro_rules! debug {
     }
 }
 
-pub(crate) struct RuleMatcher<'r, 'a, 'gcx: 'r + 'a> {
-    tcx: TyCtxt<'a, 'gcx, 'gcx>,
-    rules: &'r Rules<'gcx>,
-    matches: Matches<'r, 'gcx>,
+pub(crate) struct RuleMatcher<'r, 'tcx: 'r> {
+    tcx: TyCtxt<'tcx>,
+    rules: &'r Rules<'tcx>,
+    matches: Matches<'r, 'tcx>,
     rule_mod_symbol: Symbol,
-    parent_expr: Option<&'gcx hir::Expr>,
+    parent_expr: Option<&'tcx hir::Expr>,
     body_id: Option<hir::BodyId>,
-    rerast_definitions: RerastDefinitions<'gcx>,
+    rerast_definitions: RerastDefinitions<'tcx>,
     config: Config,
     debug_active: bool,
 }
 
-impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
+impl<'r, 'tcx> RuleMatcher<'r, 'tcx> {
     pub(crate) fn find_matches(
-        tcx: TyCtxt<'a, 'gcx, 'gcx>,
-        rerast_definitions: RerastDefinitions<'gcx>,
-        krate: &'gcx hir::Crate,
-        rules: &'r Rules<'gcx>,
+        tcx: TyCtxt<'tcx>,
+        rerast_definitions: RerastDefinitions<'tcx>,
+        krate: &'tcx hir::Crate,
+        rules: &'r Rules<'tcx>,
         config: Config,
-    ) -> Matches<'r, 'gcx> {
+    ) -> Matches<'r, 'tcx> {
         let mut matcher = RuleMatcher {
             tcx,
             rules,
@@ -78,7 +78,7 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
         matcher.matches
     }
 
-    fn should_debug_node<T: StartMatch + 'gcx>(&self, node: &'gcx T) -> bool {
+    fn should_debug_node<T: StartMatch + 'tcx>(&self, node: &'tcx T) -> bool {
         if self.config.debug_snippet.is_empty() {
             return false;
         }
@@ -95,12 +95,12 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
             .unwrap_or(false)
     }
 
-    fn get_first_match<T: StartMatch + 'gcx>(
+    fn get_first_match<T: StartMatch + 'tcx>(
         &mut self,
-        node: &'gcx T,
-        parent_node: Option<&'gcx T>,
-        rules: &'r [Rule<'gcx, T>],
-    ) -> Option<Match<'r, 'gcx, T>> {
+        node: &'tcx T,
+        parent_node: Option<&'tcx T>,
+        rules: &'r [Rule<'tcx, T>],
+    ) -> Option<Match<'r, 'tcx, T>> {
         self.debug_active = self.should_debug_node(node);
         debug!(self, "node: {:?}", node);
         for rule in rules {
@@ -118,13 +118,13 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
         None
     }
 
-    fn get_match<T: StartMatch + 'gcx>(
+    fn get_match<T: StartMatch + 'tcx>(
         &mut self,
-        node: &'gcx T,
-        parent_node: Option<&'gcx T>,
+        node: &'tcx T,
+        parent_node: Option<&'tcx T>,
         original_span: Span,
-        rule: &'r Rule<'gcx, T>,
-    ) -> Option<Match<'r, 'gcx, T>> {
+        rule: &'r Rule<'tcx, T>,
+    ) -> Option<Match<'r, 'tcx, T>> {
         let rule_fn_id = self.tcx.hir().body_owner_def_id(rule.body_id);
         let rule_tables = self.tcx.body_tables(rule.body_id);
 
@@ -169,7 +169,7 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
         })
     }
 
-    fn process_children_of_expression(&mut self, expr: &'gcx hir::Expr) {
+    fn process_children_of_expression(&mut self, expr: &'tcx hir::Expr) {
         let old_parent = self.parent_expr;
         self.parent_expr = Some(expr);
         intravisit::walk_expr(self, expr);
@@ -178,9 +178,9 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
 
     // Called after we get a match. Looks for more matches to this and other rules within the
     // experssions/patterns etc bound to the placeholders of that match.
-    fn find_matches_within_placeholders<T: StartMatch + 'gcx>(
+    fn find_matches_within_placeholders<T: StartMatch + 'tcx>(
         &mut self,
-        m: &mut Match<'r, 'gcx, T>,
+        m: &mut Match<'r, 'tcx, T>,
     ) {
         for placeholder in m.match_placeholders.placeholders_by_id.values_mut() {
             // We could create a new instance of RuleMatcher just for the finding
@@ -215,12 +215,12 @@ impl<'r, 'a, 'gcx> RuleMatcher<'r, 'a, 'gcx> {
     }
 }
 
-impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
+impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_item(&mut self, item: &'gcx hir::Item) {
+    fn visit_item(&mut self, item: &'tcx hir::Item) {
         if let hir::ItemKind::Mod(_) = item.node {
             // Avoid trying to find matches in the rules file.
             if item.ident.name == self.rule_mod_symbol {
@@ -230,7 +230,7 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
         intravisit::walk_item(self, item);
     }
 
-    fn visit_trait_ref(&mut self, trait_ref: &'gcx hir::TraitRef) {
+    fn visit_trait_ref(&mut self, trait_ref: &'tcx hir::TraitRef) {
         if let Some(m) = self.get_first_match(trait_ref, None, &self.rules.trait_ref_rules) {
             self.matches.trait_ref_matches.push(m);
         } else {
@@ -238,7 +238,7 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
         }
     }
 
-    fn visit_body(&mut self, body: &'gcx hir::Body) {
+    fn visit_body(&mut self, body: &'tcx hir::Body) {
         let old_body_id = self.body_id;
         self.body_id = Some(body.id());
         match body.value.node {
@@ -262,7 +262,7 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
         self.body_id = old_body_id;
     }
 
-    fn visit_expr(&mut self, expr: &'gcx hir::Expr) {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr) {
         let parent_expr = self.parent_expr;
         if let Some(mut m) = self.get_first_match(expr, parent_expr, &self.rules.expr_rules) {
             self.find_matches_within_placeholders(&mut m);
@@ -275,7 +275,7 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
         }
     }
 
-    fn visit_ty(&mut self, ty: &'gcx hir::Ty) {
+    fn visit_ty(&mut self, ty: &'tcx hir::Ty) {
         if let Some(m) = self.get_first_match(ty, None, &self.rules.type_rules) {
             self.matches.type_matches.push(m);
             return;
@@ -283,7 +283,7 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
         intravisit::walk_ty(self, ty);
     }
 
-    fn visit_pat(&mut self, pat: &'gcx hir::Pat) {
+    fn visit_pat(&mut self, pat: &'tcx hir::Pat) {
         if let Some(mut m) = self.get_first_match(pat, None, &self.rules.pattern_rules) {
             self.find_matches_within_placeholders(&mut m);
             self.matches.pattern_matches.push(m);
@@ -293,16 +293,16 @@ impl<'r, 'a, 'gcx> intravisit::Visitor<'gcx> for RuleMatcher<'r, 'a, 'gcx> {
     }
 }
 
-pub(crate) struct MatchState<'r, 'a, 'gcx: 'r + 'a + 'tcx, 'tcx: 'a> {
-    tcx: TyCtxt<'a, 'gcx, 'tcx>,
-    infcx: InferCtxt<'a, 'gcx, 'tcx>,
+pub(crate) struct MatchState<'r, 'a, 'tcx: 'a> {
+    tcx: TyCtxt<'tcx>,
+    infcx: InferCtxt<'a, 'tcx>,
     body_id: Option<hir::BodyId>,
-    rule_type_tables: &'gcx ty::TypeckTables<'gcx>,
-    match_placeholders: MatchPlaceholders<'r, 'gcx>,
+    rule_type_tables: &'tcx ty::TypeckTables<'tcx>,
+    match_placeholders: MatchPlaceholders<'r, 'tcx>,
     // This map should have all the same keys as the placeholders on match_placeholders. It's here
     // instead of on Match because it contains types that don't live as long as the match.
     placeholder_types_by_id: HashMap<HirId, ty::Ty<'tcx>>,
-    rerast_definitions: RerastDefinitions<'gcx>,
+    rerast_definitions: RerastDefinitions<'tcx>,
     // Whether bindings within a pattern are permitted to match any pattern. Otherwise, bindings are
     // only permitted to match bindings. This is enabled within replace_pattern, since the bindings
     // are only used within the pattern, not also as expressions, so binding to a pattern is
@@ -311,8 +311,8 @@ pub(crate) struct MatchState<'r, 'a, 'gcx: 'r + 'a + 'tcx, 'tcx: 'a> {
     debug_active: bool,
 }
 
-impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
-    fn attempt_to_bind_expr(&mut self, qpath: &hir::QPath, expr: &'gcx hir::Expr) -> bool {
+impl<'r, 'a, 'tcx: 'a> MatchState<'r, 'a, 'tcx> {
+    fn attempt_to_bind_expr(&mut self, qpath: &hir::QPath, expr: &'tcx hir::Expr) -> bool {
         if let Some(hir_id) = hir_id_from_path(qpath) {
             if let Some(&p_ty) = self.placeholder_types_by_id.get(&hir_id) {
                 let c_ty = self.code_type_tables().expr_ty(expr);
@@ -360,9 +360,9 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
     fn fn_expr_equals_method_call(
         &self,
         fn_expr: &hir::Expr,
-        fn_type_tables: &ty::TypeckTables<'gcx>,
+        fn_type_tables: &ty::TypeckTables<'tcx>,
         method_call_id: HirId,
-        method_type_tables: &ty::TypeckTables<'gcx>,
+        method_type_tables: &ty::TypeckTables<'tcx>,
     ) -> bool {
         if let Some(Ok((hir::def::DefKind::Method, method_id))) =
             fn_type_tables.type_dependent_defs().get(fn_expr.hir_id)
@@ -396,7 +396,7 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
         None
     }
 
-    fn code_type_tables(&self) -> &'gcx ty::TypeckTables<'gcx> {
+    fn code_type_tables(&self) -> &'tcx ty::TypeckTables<'tcx> {
         self.tcx.body_tables(self.body_id.unwrap())
     }
 
@@ -406,18 +406,18 @@ impl<'r, 'a, 'gcx: 'a + 'tcx, 'tcx: 'a> MatchState<'r, 'a, 'gcx, 'tcx> {
 }
 
 pub(crate) trait Matchable: Debug {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool;
 }
 
 impl<T: Matchable> Matchable for Option<T> {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         match (self.as_ref(), code.as_ref()) {
             (None, None) => true,
@@ -428,10 +428,10 @@ impl<T: Matchable> Matchable for Option<T> {
 }
 
 impl<T: Matchable> Matchable for [T] {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.len() == code.len()
             && self
@@ -442,30 +442,30 @@ impl<T: Matchable> Matchable for [T] {
 }
 
 impl<T: Matchable> Matchable for P<T> {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         (**self).attempt_match(state, &**code)
     }
 }
 
 impl<T: Matchable> Matchable for Spanned<T> {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.node.attempt_match(state, &code.node)
     }
 }
 
 impl Matchable for hir::Expr {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         use rustc::hir::ExprKind;
         let result = match (&self.node, &code.node) {
@@ -651,10 +651,10 @@ impl Matchable for hir::Expr {
 }
 
 impl Matchable for hir::Body {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.arguments.attempt_match(state, &code.arguments)
             && self.value.attempt_match(state, &code.value)
@@ -662,30 +662,30 @@ impl Matchable for hir::Body {
 }
 
 impl Matchable for hir::Arg {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.pat.attempt_match(state, &code.pat)
     }
 }
 
 impl Matchable for hir::Ty {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.node.attempt_match(state, &code.node)
     }
 }
 
 impl Matchable for hir::TyKind {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         use crate::hir::TyKind;
         match (self, code) {
@@ -712,20 +712,20 @@ impl Matchable for hir::TyKind {
 }
 
 impl Matchable for hir::MutTy {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.mutbl == code.mutbl && self.ty.attempt_match(state, &code.ty)
     }
 }
 
 impl Matchable for hir::Lifetime {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        _code: &'gcx Self,
+        _state: &mut MatchState<'r, 'a, 'tcx>,
+        _code: &'tcx Self,
     ) -> bool {
         // TODO: Probably want to check if both are 'static, otherwise attempt to bind with a
         // placeholder lifetime. Need to write test first.
@@ -734,10 +734,10 @@ impl Matchable for hir::Lifetime {
 }
 
 impl Matchable for hir::BareFnTy {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        _code: &'gcx Self,
+        _state: &mut MatchState<'r, 'a, 'tcx>,
+        _code: &'tcx Self,
     ) -> bool {
         // TODO
         false
@@ -745,20 +745,20 @@ impl Matchable for hir::BareFnTy {
 }
 
 impl Matchable for hir::PolyTraitRef {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.trait_ref.attempt_match(state, &code.trait_ref)
     }
 }
 
 impl Matchable for hir::CaptureClause {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        _state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         match (self, code) {
             (hir::CaptureClause::CaptureByValue, hir::CaptureClause::CaptureByValue)
@@ -769,10 +769,10 @@ impl Matchable for hir::CaptureClause {
 }
 
 impl Matchable for ast::CrateSugar {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        _state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         match (self, code) {
             (ast::CrateSugar::PubCrate, ast::CrateSugar::PubCrate)
@@ -783,20 +783,20 @@ impl Matchable for ast::CrateSugar {
 }
 
 impl Matchable for hir::TraitRef {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        _state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.path.res == code.path.res
     }
 }
 
 impl Matchable for hir::GenericBound {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        _code: &'gcx Self,
+        _state: &mut MatchState<'r, 'a, 'tcx>,
+        _code: &'tcx Self,
     ) -> bool {
         // TODO
         false
@@ -804,10 +804,10 @@ impl Matchable for hir::GenericBound {
 }
 
 impl Matchable for hir::Arm {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         // For now only accept if attrs is empty
         self.attrs.is_empty()
@@ -819,10 +819,10 @@ impl Matchable for hir::Arm {
 }
 
 impl Matchable for hir::Guard {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         match (self, code) {
             (hir::Guard::If(ref p_expr), hir::Guard::If(ref c_expr)) => {
@@ -833,10 +833,10 @@ impl Matchable for hir::Guard {
 }
 
 impl Matchable for hir::Pat {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         use crate::hir::PatKind::*;
         match (&self.node, &code.node) {
@@ -924,90 +924,90 @@ impl Matchable for hir::Pat {
 }
 
 impl Matchable for hir::Field {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.ident.attempt_match(state, &code.ident) && self.expr.attempt_match(state, &code.expr)
     }
 }
 
 impl Matchable for hir::FieldPat {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.ident.attempt_match(state, &code.ident) && self.pat.attempt_match(state, &code.pat)
     }
 }
 
 impl Matchable for hir::BinOp {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        _state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.node == code.node
     }
 }
 
 impl Matchable for Symbol {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        _state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self == code
     }
 }
 
 impl Matchable for usize {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        _state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self == code
     }
 }
 
 impl Matchable for hir::Destination {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.label.attempt_match(state, &code.label)
     }
 }
 
 impl Matchable for syntax::ast::Label {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.ident.name.attempt_match(state, &code.ident.name)
     }
 }
 
 impl Matchable for ast::Ident {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.name.attempt_match(state, &code.name)
     }
 }
 
 impl Matchable for hir::QPath {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         // TODO: Consider using TypeckTables::qpath_def, then passing the two defs to the match
         // currently for hir::Path below.
@@ -1025,10 +1025,10 @@ impl Matchable for hir::QPath {
 }
 
 impl Matchable for hir::Path {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         match (self.res, code.res) {
             (hir::def::Res::Local(p_hir_id), hir::def::Res::Local(c_hir_id)) => state
@@ -1043,20 +1043,20 @@ impl Matchable for hir::Path {
 }
 
 impl Matchable for hir::PathSegment {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.ident.name == code.ident.name && self.args.attempt_match(state, &code.args)
     }
 }
 
 impl Matchable for hir::Stmt {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         use rustc::hir::StmtKind;
         match (&self.node, &code.node) {
@@ -1073,10 +1073,10 @@ impl Matchable for hir::Stmt {
 }
 
 impl Matchable for hir::Local {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.pat.attempt_match(state, &code.pat)
             && self.ty.attempt_match(state, &code.ty)
@@ -1086,10 +1086,10 @@ impl Matchable for hir::Local {
 }
 
 impl Matchable for hir::Item {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         state.match_placeholders.matched_variable_decls.insert(
             self.hir_id,
@@ -1105,10 +1105,10 @@ impl Matchable for hir::Item {
 }
 
 impl Matchable for hir::ItemKind {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         use crate::hir::ItemKind;
         match (self, code) {
@@ -1127,20 +1127,20 @@ impl Matchable for hir::ItemKind {
 }
 
 impl Matchable for hir::AnonConst {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.body.attempt_match(state, &code.body)
     }
 }
 
 impl Matchable for hir::BodyId {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         let p_body = state.tcx.hir().body(*self);
         let c_body = state.tcx.hir().body(*code);
@@ -1149,10 +1149,10 @@ impl Matchable for hir::BodyId {
 }
 
 impl Matchable for hir::Visibility {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         use crate::hir::VisibilityKind::*;
         match (&self.node, &code.node) {
@@ -1172,10 +1172,10 @@ impl Matchable for hir::Visibility {
 }
 
 impl Matchable for ast::Attribute {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        _state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        _code: &'gcx Self,
+        _state: &mut MatchState<'r, 'a, 'tcx>,
+        _code: &'tcx Self,
     ) -> bool {
         // TODO
         false
@@ -1183,10 +1183,10 @@ impl Matchable for ast::Attribute {
 }
 
 impl Matchable for hir::Block {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         if !self.stmts.attempt_match(state, &code.stmts) {
             return false;
@@ -1201,10 +1201,10 @@ impl Matchable for hir::Block {
 }
 
 impl Matchable for Vec<hir::Stmt> {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         // Ideally we should do what regex matching does and build an FSA or something. For now we
         // just apply a more basic algorithm. Look for matches at the start, if we find a
@@ -1240,10 +1240,10 @@ impl Matchable for Vec<hir::Stmt> {
 }
 
 impl Matchable for hir::GenericArgs {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.parenthesized == code.parenthesized
             && self.args.attempt_match(state, &*code.args)
@@ -1252,10 +1252,10 @@ impl Matchable for hir::GenericArgs {
 }
 
 impl Matchable for hir::GenericArg {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         match (self, code) {
             (
@@ -1271,10 +1271,10 @@ impl Matchable for hir::GenericArg {
 }
 
 impl Matchable for hir::TypeBinding {
-    fn attempt_match<'r, 'a, 'gcx, 'tcx>(
+    fn attempt_match<'r, 'a, 'tcx>(
         &self,
-        state: &mut MatchState<'r, 'a, 'gcx, 'tcx>,
-        code: &'gcx Self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
     ) -> bool {
         self.ident.name.attempt_match(state, &code.ident.name)
             && self.ty().attempt_match(state, &code.ty())
@@ -1282,15 +1282,15 @@ impl Matchable for hir::TypeBinding {
 }
 
 #[derive(Debug)]
-pub(crate) struct Matches<'r, 'gcx: 'r> {
-    expr_matches: Vec<Match<'r, 'gcx, hir::Expr>>,
-    pattern_matches: Vec<Match<'r, 'gcx, hir::Pat>>,
-    type_matches: Vec<Match<'r, 'gcx, hir::Ty>>,
-    trait_ref_matches: Vec<Match<'r, 'gcx, hir::TraitRef>>,
+pub(crate) struct Matches<'r, 'tcx: 'r> {
+    expr_matches: Vec<Match<'r, 'tcx, hir::Expr>>,
+    pattern_matches: Vec<Match<'r, 'tcx, hir::Pat>>,
+    type_matches: Vec<Match<'r, 'tcx, hir::Ty>>,
+    trait_ref_matches: Vec<Match<'r, 'tcx, hir::TraitRef>>,
 }
 
-impl<'r, 'gcx> Matches<'r, 'gcx> {
-    fn new() -> Matches<'r, 'gcx> {
+impl<'r, 'tcx> Matches<'r, 'tcx> {
+    fn new() -> Matches<'r, 'tcx> {
         Matches {
             expr_matches: Vec::new(),
             pattern_matches: Vec::new(),
@@ -1301,9 +1301,9 @@ impl<'r, 'gcx> Matches<'r, 'gcx> {
 }
 
 #[derive(Debug)]
-struct Match<'r, 'gcx: 'r, T: StartMatch> {
-    rule: &'r Rule<'gcx, T>,
-    node: &'gcx T,
+struct Match<'r, 'tcx: 'r, T: StartMatch> {
+    rule: &'r Rule<'tcx, T>,
+    node: &'tcx T,
     // Parent of the patched expression if the parent is also an expression. Used to determine if we
     // need to insert parenthesis.
     // TODO: For nested matches, this might not be quite what we want. We want to know what the
@@ -1311,13 +1311,13 @@ struct Match<'r, 'gcx: 'r, T: StartMatch> {
     // parent of the matched code, but for a match within a placeholder, if the the top-level of the
     // placeholder matches, then the new parent will be from the replacement expression in the
     // parent rule.
-    parent_node: Option<&'gcx T>,
-    match_placeholders: MatchPlaceholders<'r, 'gcx>,
+    parent_node: Option<&'tcx T>,
+    match_placeholders: MatchPlaceholders<'r, 'tcx>,
     original_span: Span,
 }
 
-impl<'r, 'a, 'gcx, 'tcx, T: StartMatch> Match<'r, 'gcx, T> {
-    fn get_replacement_source(&self, tcx: TyCtxt<'a, 'gcx, 'gcx>) -> String {
+impl<'r, 'a, 'tcx, T: StartMatch> Match<'r, 'tcx, T> {
+    fn get_replacement_source(&self, tcx: TyCtxt<'tcx>) -> String {
         let replacement = self.rule.replace;
         let mut replacement_visitor = ReplacementVisitor {
             tcx,
@@ -1346,35 +1346,35 @@ pub(crate) struct MatchedVariableDecl {
 }
 
 #[derive(Debug)]
-pub(crate) struct MatchPlaceholders<'r, 'gcx: 'r> {
+pub(crate) struct MatchPlaceholders<'r, 'tcx: 'r> {
     // Maps the IDs of placeholders in arguments, to their state (unbound, bound to expression
     // etc).
-    placeholders_by_id: HashMap<HirId, Placeholder<'r, 'gcx>>,
+    placeholders_by_id: HashMap<HirId, Placeholder<'r, 'tcx>>,
     // Maps from variables declared in the search pattern to variables declared in the code.
     matched_variable_decls: HashMap<HirId, MatchedVariableDecl>,
 }
 
-impl<'r, 'a, 'gcx, 'tcx> MatchPlaceholders<'r, 'gcx> {
-    fn new() -> MatchPlaceholders<'r, 'gcx> {
+impl<'r, 'a, 'tcx> MatchPlaceholders<'r, 'tcx> {
+    fn new() -> MatchPlaceholders<'r, 'tcx> {
         MatchPlaceholders {
             placeholders_by_id: HashMap::new(),
             matched_variable_decls: HashMap::new(),
         }
     }
 
-    fn get_placeholder<'this>(&'this self, hir_id: HirId) -> Option<&'this Placeholder<'r, 'gcx>> {
+    fn get_placeholder<'this>(&'this self, hir_id: HirId) -> Option<&'this Placeholder<'r, 'tcx>> {
         self.placeholders_by_id.get(&hir_id)
     }
 }
 
 #[derive(Debug, Copy, Clone)]
-enum PlaceholderContents<'gcx> {
-    Expr(&'gcx hir::Expr),
-    Statements(&'gcx [hir::Stmt]),
-    Pattern(&'gcx hir::Pat),
+enum PlaceholderContents<'tcx> {
+    Expr(&'tcx hir::Expr),
+    Statements(&'tcx [hir::Stmt]),
+    Pattern(&'tcx hir::Pat),
 }
 
-impl<'gcx> PlaceholderContents<'gcx> {
+impl<'tcx> PlaceholderContents<'tcx> {
     fn get_span(&self, target: Span) -> Span {
         use self::PlaceholderContents::*;
         match *self {
@@ -1404,15 +1404,15 @@ impl<'gcx> PlaceholderContents<'gcx> {
 }
 
 #[derive(Debug)]
-struct Placeholder<'r, 'gcx: 'r> {
-    contents: PlaceholderContents<'gcx>,
+struct Placeholder<'r, 'tcx: 'r> {
+    contents: PlaceholderContents<'tcx>,
     // Matches found within contents. Populated if and only if the rule that owns this placeholder
     // succeeds.
-    matches: Matches<'r, 'gcx>,
+    matches: Matches<'r, 'tcx>,
 }
 
-impl<'r, 'gcx: 'r> Placeholder<'r, 'gcx> {
-    fn new(contents: PlaceholderContents<'gcx>) -> Placeholder<'r, 'gcx> {
+impl<'r, 'tcx: 'r> Placeholder<'r, 'tcx> {
+    fn new(contents: PlaceholderContents<'tcx>) -> Placeholder<'r, 'tcx> {
         Placeholder {
             contents,
             matches: Matches::new(),
@@ -1538,17 +1538,17 @@ fn all_expansions_equal(rule_span: Span, code_span: Span) -> bool {
 
 // Visits the replacement AST looking for variables that need to be replaced with their bound values
 // from the matched source then recording the spans for said replacement.
-struct ReplacementVisitor<'r, 'a: 'r, 'gcx: 'a, T: StartMatch> {
-    tcx: TyCtxt<'a, 'gcx, 'gcx>,
+struct ReplacementVisitor<'r, 'tcx, T: StartMatch> {
+    tcx: TyCtxt<'tcx>,
     result: Vec<CodeSubstitution<Span>>,
-    current_match: &'r Match<'r, 'gcx, T>,
-    parent_expr: Option<&'gcx hir::Expr>,
+    current_match: &'r Match<'r, 'tcx, T>,
+    parent_expr: Option<&'tcx hir::Expr>,
     // Map from HirIds of variables declared in the replacement pattern to HirIds declared in the
     // code that should replace them.
     substitute_hir_ids: HashMap<HirId, HirId>,
 }
 
-impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
+impl<'r, 'tcx, T: StartMatch> ReplacementVisitor<'r, 'tcx, T> {
     // Returns a snippet of code for the supplied definition.
     fn node_id_snippet(&self, node_id: NodeId) -> String {
         let source_map = self.tcx.sess.source_map();
@@ -1563,7 +1563,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
 
     // Check if the supplied expression is a placeholder variable. If it is, replace the supplied
     // span with whatever was bound to the placeholder and return true.
-    fn process_expr(&mut self, expr: &'gcx hir::Expr, placeholder_span: Span) -> bool {
+    fn process_expr(&mut self, expr: &'tcx hir::Expr, placeholder_span: Span) -> bool {
         if let hir::ExprKind::Path(ref path) = expr.node {
             if let Some(hir_id) = hir_id_from_path(path) {
                 if let Some(placeholder) = self
@@ -1583,7 +1583,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
         false
     }
 
-    fn process_placeholder(&mut self, placeholder: &Placeholder<'r, 'gcx>, placeholder_span: Span) {
+    fn process_placeholder(&mut self, placeholder: &Placeholder<'r, 'tcx>, placeholder_span: Span) {
         let source_map = self.tcx.sess.source_map();
         let span = placeholder
             .contents
@@ -1598,14 +1598,14 @@ impl<'r, 'a, 'gcx, T: StartMatch> ReplacementVisitor<'r, 'a, 'gcx, T> {
     }
 }
 
-impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
-    for ReplacementVisitor<'r, 'a, 'gcx, T>
+impl<'r, 'tcx, T: StartMatch> intravisit::Visitor<'tcx>
+    for ReplacementVisitor<'r, 'tcx, T>
 {
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_expr(&mut self, expr: &'gcx hir::Expr) {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr) {
         self.process_expr(expr, expr.span);
         let old_parent = self.parent_expr;
         self.parent_expr = Some(expr);
@@ -1613,7 +1613,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
         self.parent_expr = old_parent;
     }
 
-    fn visit_stmt(&mut self, stmt: &'gcx hir::Stmt) {
+    fn visit_stmt(&mut self, stmt: &'tcx hir::Stmt) {
         if let hir::StmtKind::Semi(ref expr) = stmt.node {
             if let hir::ExprKind::Call(ref expr_fn, _) = expr.node {
                 if self.process_expr(expr_fn, stmt.span) {
@@ -1624,7 +1624,7 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
         intravisit::walk_stmt(self, stmt);
     }
 
-    fn visit_pat(&mut self, pat: &'gcx hir::Pat) {
+    fn visit_pat(&mut self, pat: &'tcx hir::Pat) {
         if let hir::PatKind::Binding(_, hir_id, ref ident, _) = pat.node {
             if let Some(search_hir_id) = self
                 .current_match
@@ -1666,13 +1666,13 @@ impl<'r, 'a, 'gcx, T: StartMatch> intravisit::Visitor<'gcx>
     }
 }
 
-pub(crate) fn substitions_for_matches<'r, 'a, 'gcx>(
-    tcx: TyCtxt<'a, 'gcx, 'gcx>,
-    matches: &Matches<'r, 'gcx>,
+pub(crate) fn substitions_for_matches<'r, 'a, 'tcx>(
+    tcx: TyCtxt<'tcx>,
+    matches: &Matches<'r, 'tcx>,
 ) -> Vec<CodeSubstitution<Span>> {
-    fn add_substitions_for_matches<'r, 'a, 'gcx, T: StartMatch>(
-        tcx: TyCtxt<'a, 'gcx, 'gcx>,
-        matches: &[Match<'r, 'gcx, T>],
+    fn add_substitions_for_matches<'r, 'a, 'tcx, T: StartMatch>(
+        tcx: TyCtxt<'tcx>,
+        matches: &[Match<'r, 'tcx, T>],
         substitutions: &mut Vec<CodeSubstitution<Span>>,
     ) {
         for m in matches {

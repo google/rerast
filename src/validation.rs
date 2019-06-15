@@ -21,8 +21,8 @@ use rustc::ty::TyCtxt;
 use std::collections::HashSet;
 use syntax_pos::Span;
 
-struct ValidatorState<'a, 'gcx: 'a> {
-    tcx: TyCtxt<'a, 'gcx, 'gcx>,
+struct ValidatorState<'tcx> {
+    tcx: TyCtxt<'tcx>,
     errors: Vec<ErrorWithSpan>,
     // Definitions that are defined as placeholders.
     placeholders: HashSet<HirId>,
@@ -30,16 +30,16 @@ struct ValidatorState<'a, 'gcx: 'a> {
     bound_placeholders: HashSet<HirId>,
 }
 
-impl<'a, 'gcx: 'a> ValidatorState<'a, 'gcx> {
+impl<'tcx> ValidatorState<'tcx> {
     fn add_error<T: Into<String>>(&mut self, message: T, span: Span) {
         self.errors.push(ErrorWithSpan::new(message, span));
     }
 }
 
-impl<'gcx, T: StartMatch + 'gcx> Rule<'gcx, T> {
+impl<'tcx, T: StartMatch + 'tcx> Rule<'tcx, T> {
     pub(crate) fn validate<'a>(
         &self,
-        tcx: TyCtxt<'a, 'gcx, 'gcx>,
+        tcx: TyCtxt<'tcx>,
     ) -> Result<(), Vec<ErrorWithSpan>> {
         let rule_body = tcx.hir().body(self.body_id);
 
@@ -67,16 +67,16 @@ impl<'gcx, T: StartMatch + 'gcx> Rule<'gcx, T> {
     }
 }
 
-struct SearchValidator<'a, 'gcx: 'a> {
-    state: ValidatorState<'a, 'gcx>,
+struct SearchValidator<'tcx> {
+    state: ValidatorState<'tcx>,
 }
 
-impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for SearchValidator<'a, 'gcx> {
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
+impl<'tcx> intravisit::Visitor<'tcx> for SearchValidator<'tcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.state.tcx.hir())
     }
 
-    fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: hir::HirId, span: Span) {
+    fn visit_qpath(&mut self, qpath: &'tcx hir::QPath, id: hir::HirId, span: Span) {
         if let Some(hir_id) = hir_id_from_path(qpath) {
             if self.state.placeholders.contains(&hir_id)
                 && !self.state.bound_placeholders.insert(hir_id)
@@ -91,16 +91,16 @@ impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for SearchValidator<'a, 'gcx> {
     }
 }
 
-struct ReplacementValidator<'a, 'gcx: 'a> {
-    state: ValidatorState<'a, 'gcx>,
+struct ReplacementValidator<'tcx> {
+    state: ValidatorState<'tcx>,
 }
 
-impl<'a, 'gcx: 'a> intravisit::Visitor<'gcx> for ReplacementValidator<'a, 'gcx> {
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
+impl<'tcx> intravisit::Visitor<'tcx> for ReplacementValidator<'tcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.state.tcx.hir())
     }
 
-    fn visit_qpath(&mut self, qpath: &'gcx hir::QPath, id: hir::HirId, span: Span) {
+    fn visit_qpath(&mut self, qpath: &'tcx hir::QPath, id: hir::HirId, span: Span) {
         if let Some(hir_id) = hir_id_from_path(qpath) {
             if self.state.placeholders.contains(&hir_id)
                 && !self.state.bound_placeholders.contains(&hir_id)

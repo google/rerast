@@ -17,33 +17,33 @@ use rustc::ty::{self, TyCtxt};
 use syntax::symbol::Symbol;
 
 #[derive(Copy, Clone)]
-pub(crate) struct RerastDefinitions<'gcx> {
-    pub(crate) statements: ty::Ty<'gcx>,
-    pub(crate) expr_rule_marker: ty::Ty<'gcx>,
-    pub(crate) pattern_rule_marker: ty::Ty<'gcx>,
-    pub(crate) type_rule_marker: ty::Ty<'gcx>,
-    pub(crate) trait_ref_rule_marker: ty::Ty<'gcx>,
+pub(crate) struct RerastDefinitions<'tcx> {
+    pub(crate) statements: ty::Ty<'tcx>,
+    pub(crate) expr_rule_marker: ty::Ty<'tcx>,
+    pub(crate) pattern_rule_marker: ty::Ty<'tcx>,
+    pub(crate) type_rule_marker: ty::Ty<'tcx>,
+    pub(crate) trait_ref_rule_marker: ty::Ty<'tcx>,
     pub(crate) search_symbol: Symbol,
     pub(crate) replace_symbol: Symbol,
 }
 
 // Visits the code in the rerast module, finding definitions we care about for later use.
-pub(crate) struct RerastDefinitionsFinder<'a, 'gcx: 'a> {
-    tcx: TyCtxt<'a, 'gcx, 'gcx>,
+pub(crate) struct RerastDefinitionsFinder<'tcx> {
+    tcx: TyCtxt<'tcx>,
     rerast_mod_symbol: Symbol,
     rerast_types_symbol: Symbol,
     inside_rerast_mod: bool,
-    definitions: Option<RerastDefinitions<'gcx>>,
+    definitions: Option<RerastDefinitions<'tcx>>,
 }
 
-impl<'a, 'gcx> RerastDefinitionsFinder<'a, 'gcx> {
+impl<'tcx> RerastDefinitionsFinder<'tcx> {
     /// Finds rerast's internal definitions. Returns none if they cannot be found. This happens for
     /// example if the root source file has a #![cfg(feature = "something")] where the "something"
     /// feature is not enabled.
     pub(crate) fn find_definitions(
-        tcx: TyCtxt<'a, 'gcx, 'gcx>,
-        krate: &'gcx hir::Crate,
-    ) -> Option<RerastDefinitions<'gcx>> {
+        tcx: TyCtxt<'tcx>,
+        krate: &'tcx hir::Crate,
+    ) -> Option<RerastDefinitions<'tcx>> {
         let mut finder = RerastDefinitionsFinder {
             tcx,
             rerast_mod_symbol: Symbol::intern(super::RERAST_INTERNAL_MOD_NAME),
@@ -58,12 +58,12 @@ impl<'a, 'gcx> RerastDefinitionsFinder<'a, 'gcx> {
 
 // This would be a little easier if there were a way to find functions by name. There's probably
 // something I've missed, but so far I haven't found one.
-impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RerastDefinitionsFinder<'a, 'gcx> {
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
+impl<'tcx> intravisit::Visitor<'tcx> for RerastDefinitionsFinder<'tcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_item(&mut self, item: &'gcx hir::Item) {
+    fn visit_item(&mut self, item: &'tcx hir::Item) {
         if self.inside_rerast_mod {
             intravisit::walk_item(self, item);
         } else if let hir::ItemKind::Mod(_) = item.node {
@@ -75,7 +75,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RerastDefinitionsFinder<'a, '
         }
     }
 
-    fn visit_body(&mut self, body: &'gcx hir::Body) {
+    fn visit_body(&mut self, body: &'tcx hir::Body) {
         let fn_id = self.tcx.hir().body_owner_def_id(body.id());
         if self.tcx.item_name(fn_id) == self.rerast_types_symbol {
             let tables = self.tcx.typeck_tables_of(fn_id);

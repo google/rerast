@@ -234,20 +234,20 @@ pub(crate) fn hir_id_from_path(q_path: &hir::QPath) -> Option<HirId> {
     }
 }
 
-struct Replacer<'a, 'gcx: 'a> {
-    tcx: TyCtxt<'a, 'gcx, 'gcx>,
-    rerast_definitions: RerastDefinitions<'gcx>,
-    rules: Rules<'gcx>,
+struct Replacer<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    rerast_definitions: RerastDefinitions<'tcx>,
+    rules: Rules<'tcx>,
     config: Config,
 }
 
-impl<'a, 'gcx> Replacer<'a, 'gcx> {
+impl<'tcx> Replacer<'tcx> {
     fn new(
-        tcx: TyCtxt<'a, 'gcx, 'gcx>,
-        rerast_definitions: RerastDefinitions<'gcx>,
-        rules: Rules<'gcx>,
+        tcx: TyCtxt<'tcx>,
+        rerast_definitions: RerastDefinitions<'tcx>,
+        rules: Rules<'tcx>,
         config: Config,
-    ) -> Replacer<'a, 'gcx> {
+    ) -> Replacer<'tcx> {
         Replacer {
             tcx,
             rerast_definitions,
@@ -277,7 +277,7 @@ impl<'a, 'gcx> Replacer<'a, 'gcx> {
         }
     }
 
-    fn apply_to_crate(&self, krate: &'gcx hir::Crate) -> FileRelativeSubstitutions {
+    fn apply_to_crate(&self, krate: &'tcx hir::Crate) -> FileRelativeSubstitutions {
         let codemap = self.tcx.sess.source_map();
 
         let matches = rule_matcher::RuleMatcher::find_matches(
@@ -330,8 +330,8 @@ impl rustc_driver::Callbacks for RerastCompilerCallbacks {
     }
 }
 
-fn find_and_apply_rules<'a, 'gcx>(
-    tcx: TyCtxt<'a, 'gcx, 'gcx>,
+fn find_and_apply_rules<'a, 'tcx>(
+    tcx: TyCtxt<'tcx>,
     config: &Config,
 ) -> Result<RerastOutput, RerastErrors> {
     let krate = tcx.hir().krate();
@@ -373,13 +373,13 @@ fn find_and_apply_rules<'a, 'gcx>(
 
 // Searches for variables declared within the search code. For example in the pattern Some(a), "a"
 // will be found.
-struct DeclaredNamesFinder<'a, 'gcx: 'a> {
-    tcx: TyCtxt<'a, 'gcx, 'gcx>,
+struct DeclaredNamesFinder<'tcx> {
+    tcx: TyCtxt<'tcx>,
     names: HashMap<Symbol, HirId>,
 }
 
-impl<'a, 'gcx> DeclaredNamesFinder<'a, 'gcx> {
-    fn find<T: StartMatch>(tcx: TyCtxt<'a, 'gcx, 'gcx>, node: &'gcx T) -> HashMap<Symbol, HirId> {
+impl<'tcx> DeclaredNamesFinder<'tcx> {
+    fn find<T: StartMatch>(tcx: TyCtxt<'tcx>, node: &'tcx T) -> HashMap<Symbol, HirId> {
         let mut finder = DeclaredNamesFinder {
             tcx,
             names: HashMap::new(),
@@ -389,12 +389,12 @@ impl<'a, 'gcx> DeclaredNamesFinder<'a, 'gcx> {
     }
 }
 
-impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for DeclaredNamesFinder<'a, 'gcx> {
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
+impl<'tcx> intravisit::Visitor<'tcx> for DeclaredNamesFinder<'tcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_pat(&mut self, pat: &'gcx hir::Pat) {
+    fn visit_pat(&mut self, pat: &'tcx hir::Pat) {
         if let hir::PatKind::Binding(_, hir_id, ref ident, _) = pat.node {
             if self.names.insert(ident.name, hir_id).is_some() {
                 // TODO: Proper error reporting

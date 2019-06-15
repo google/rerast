@@ -25,22 +25,22 @@ use syntax::symbol::Symbol;
 use syntax_pos::Span;
 
 // Finds rules.
-pub(crate) struct RuleFinder<'a, 'gcx: 'a> {
-    tcx: TyCtxt<'a, 'gcx, 'gcx>,
-    rerast_definitions: RerastDefinitions<'gcx>,
+pub(crate) struct RuleFinder<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    rerast_definitions: RerastDefinitions<'tcx>,
     rules_mod_symbol: Symbol,
-    rules: Rules<'gcx>,
+    rules: Rules<'tcx>,
     body_ids: Vec<hir::BodyId>,
     in_rules_module: bool,
     errors: Vec<ErrorWithSpan>,
 }
 
-impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
+impl<'tcx> RuleFinder<'tcx> {
     pub(crate) fn find_rules(
-        tcx: TyCtxt<'a, 'gcx, 'gcx>,
-        rerast_definitions: RerastDefinitions<'gcx>,
-        krate: &'gcx hir::Crate,
-    ) -> Result<Rules<'gcx>, Vec<ErrorWithSpan>> {
+        tcx: TyCtxt<'tcx>,
+        rerast_definitions: RerastDefinitions<'tcx>,
+        krate: &'tcx hir::Crate,
+    ) -> Result<Rules<'tcx>, Vec<ErrorWithSpan>> {
         let mut rule_finder = RuleFinder {
             tcx,
             rerast_definitions,
@@ -61,8 +61,8 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
     // Possibly add a rule.
     fn maybe_add_rule(
         &mut self,
-        arg_ty: ty::Ty<'gcx>,
-        arms: &'gcx [hir::Arm],
+        arg_ty: ty::Ty<'tcx>,
+        arms: &'tcx [hir::Arm],
         arg_ty_span: Span,
     ) -> Result<(), Vec<ErrorWithSpan>> {
         if self.maybe_add_typed_rule::<hir::Expr>(arg_ty, arms)?
@@ -81,10 +81,10 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
         }
     }
 
-    fn maybe_add_typed_rule<T: 'gcx + StartMatch>(
+    fn maybe_add_typed_rule<T: 'tcx + StartMatch>(
         &mut self,
-        arg_ty: ty::Ty<'gcx>,
-        arms: &'gcx [hir::Arm],
+        arg_ty: ty::Ty<'tcx>,
+        arms: &'tcx [hir::Arm],
     ) -> Result<bool, Vec<ErrorWithSpan>> {
         // Given some arms of a match statement, returns the block for arm_name if any.
         fn get_arm(arms: &[hir::Arm], arm_name: Symbol) -> Option<&hir::Block> {
@@ -157,12 +157,12 @@ impl<'a, 'gcx> RuleFinder<'a, 'gcx> {
     }
 }
 
-impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'gcx> {
+impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_item(&mut self, item: &'gcx hir::Item) {
+    fn visit_item(&mut self, item: &'tcx hir::Item) {
         if let hir::ItemKind::Mod(_) = item.node {
             if item.ident.name == self.rules_mod_symbol {
                 self.in_rules_module = true;
@@ -177,7 +177,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
         intravisit::walk_item(self, item);
     }
 
-    fn visit_expr(&mut self, expr: &'gcx hir::Expr) {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr) {
         if !self.in_rules_module {
             return;
         }
@@ -201,7 +201,7 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
         intravisit::walk_expr(self, expr)
     }
 
-    fn visit_body(&mut self, body: &'gcx hir::Body) {
+    fn visit_body(&mut self, body: &'tcx hir::Body) {
         if !self.in_rules_module {
             return;
         }
@@ -214,18 +214,18 @@ impl<'a, 'gcx, 'tcx> intravisit::Visitor<'gcx> for RuleFinder<'a, 'gcx> {
 // Trait implemented by types that we can match (as opposed to be part of a match).
 pub(crate) trait StartMatch: Matchable {
     fn span(&self) -> Span;
-    fn walk<'gcx, V: intravisit::Visitor<'gcx>>(visitor: &mut V, node: &'gcx Self);
+    fn walk<'tcx, V: intravisit::Visitor<'tcx>>(visitor: &mut V, node: &'tcx Self);
     fn needs_parenthesis(_parent: Option<&Self>, _child: &Self) -> bool {
         false
     }
     // Extract the root search/replace node from the supplied block.
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan>;
     // Adds the supplied rule to the appropriate typed collection in rules.
-    fn add_rule<'gcx>(rule: Rule<'gcx, Self>, rules: &mut Rules<'gcx>)
+    fn add_rule<'tcx>(rule: Rule<'tcx, Self>, rules: &mut Rules<'tcx>)
     where
         Self: marker::Sized;
     // Get the type marker used to identify this type of search/replace.
-    fn replace_marker_type<'gcx>(rerast_definitions: &RerastDefinitions<'gcx>) -> ty::Ty<'gcx>;
+    fn replace_marker_type<'tcx>(rerast_definitions: &RerastDefinitions<'tcx>) -> ty::Ty<'tcx>;
     // See comment on field of the same name on MatchState.
     fn bindings_can_match_patterns() -> bool {
         false
@@ -237,7 +237,7 @@ impl StartMatch for hir::Expr {
     fn span(&self) -> Span {
         self.span
     }
-    fn walk<'gcx, V: intravisit::Visitor<'gcx>>(visitor: &mut V, node: &'gcx Self) {
+    fn walk<'tcx, V: intravisit::Visitor<'tcx>>(visitor: &mut V, node: &'tcx Self) {
         visitor.visit_expr(node);
     }
     fn needs_parenthesis(parent: Option<&Self>, child: &Self) -> bool {
@@ -256,10 +256,10 @@ impl StartMatch for hir::Expr {
             block.span,
         ))
     }
-    fn add_rule<'gcx>(rule: Rule<'gcx, Self>, rules: &mut Rules<'gcx>) {
+    fn add_rule<'tcx>(rule: Rule<'tcx, Self>, rules: &mut Rules<'tcx>) {
         rules.expr_rules.push(rule);
     }
-    fn replace_marker_type<'gcx>(rerast_definitions: &RerastDefinitions<'gcx>) -> ty::Ty<'gcx> {
+    fn replace_marker_type<'tcx>(rerast_definitions: &RerastDefinitions<'tcx>) -> ty::Ty<'tcx> {
         rerast_definitions.expr_rule_marker
     }
     fn hir_id(&self) -> HirId {
@@ -271,7 +271,7 @@ impl StartMatch for hir::Ty {
     fn span(&self) -> Span {
         self.span
     }
-    fn walk<'gcx, V: intravisit::Visitor<'gcx>>(visitor: &mut V, node: &'gcx Self) {
+    fn walk<'tcx, V: intravisit::Visitor<'tcx>>(visitor: &mut V, node: &'tcx Self) {
         visitor.visit_ty(node);
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
@@ -289,10 +289,10 @@ impl StartMatch for hir::Ty {
             block.span,
         ))
     }
-    fn add_rule<'gcx>(rule: Rule<'gcx, Self>, rules: &mut Rules<'gcx>) {
+    fn add_rule<'tcx>(rule: Rule<'tcx, Self>, rules: &mut Rules<'tcx>) {
         rules.type_rules.push(rule);
     }
-    fn replace_marker_type<'gcx>(rerast_definitions: &RerastDefinitions<'gcx>) -> ty::Ty<'gcx> {
+    fn replace_marker_type<'tcx>(rerast_definitions: &RerastDefinitions<'tcx>) -> ty::Ty<'tcx> {
         rerast_definitions.type_rule_marker
     }
     fn hir_id(&self) -> HirId {
@@ -304,7 +304,7 @@ impl StartMatch for hir::TraitRef {
     fn span(&self) -> Span {
         self.path.span
     }
-    fn walk<'gcx, V: intravisit::Visitor<'gcx>>(visitor: &mut V, node: &'gcx Self) {
+    fn walk<'tcx, V: intravisit::Visitor<'tcx>>(visitor: &mut V, node: &'tcx Self) {
         visitor.visit_trait_ref(node);
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
@@ -325,10 +325,10 @@ impl StartMatch for hir::TraitRef {
             ));
         }
     }
-    fn add_rule<'gcx>(rule: Rule<'gcx, Self>, rules: &mut Rules<'gcx>) {
+    fn add_rule<'tcx>(rule: Rule<'tcx, Self>, rules: &mut Rules<'tcx>) {
         rules.trait_ref_rules.push(rule);
     }
-    fn replace_marker_type<'gcx>(rerast_definitions: &RerastDefinitions<'gcx>) -> ty::Ty<'gcx> {
+    fn replace_marker_type<'tcx>(rerast_definitions: &RerastDefinitions<'tcx>) -> ty::Ty<'tcx> {
         rerast_definitions.trait_ref_rule_marker
     }
     fn hir_id(&self) -> HirId {
@@ -340,7 +340,7 @@ impl StartMatch for hir::Pat {
     fn span(&self) -> Span {
         self.span
     }
-    fn walk<'gcx, V: intravisit::Visitor<'gcx>>(visitor: &mut V, node: &'gcx Self) {
+    fn walk<'tcx, V: intravisit::Visitor<'tcx>>(visitor: &mut V, node: &'tcx Self) {
         visitor.visit_pat(node);
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
@@ -361,10 +361,10 @@ impl StartMatch for hir::Pat {
             block.span,
         ))
     }
-    fn add_rule<'gcx>(rule: Rule<'gcx, Self>, rules: &mut Rules<'gcx>) {
+    fn add_rule<'tcx>(rule: Rule<'tcx, Self>, rules: &mut Rules<'tcx>) {
         rules.pattern_rules.push(rule);
     }
-    fn replace_marker_type<'gcx>(rerast_definitions: &RerastDefinitions<'gcx>) -> ty::Ty<'gcx> {
+    fn replace_marker_type<'tcx>(rerast_definitions: &RerastDefinitions<'tcx>) -> ty::Ty<'tcx> {
         rerast_definitions.pattern_rule_marker
     }
     fn bindings_can_match_patterns() -> bool {

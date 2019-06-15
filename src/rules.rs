@@ -19,9 +19,9 @@ use std::vec::Vec;
 use syntax::symbol::Symbol;
 
 #[derive(Debug)]
-pub(crate) struct Rule<'gcx, T: StartMatch> {
-    pub(crate) search: &'gcx T,
-    pub(crate) replace: &'gcx T,
+pub(crate) struct Rule<'tcx, T: StartMatch> {
+    pub(crate) search: &'tcx T,
+    pub(crate) replace: &'tcx T,
     // The method in which the rule is defined.
     pub(crate) body_id: hir::BodyId,
     pub(crate) placeholder_ids: Vec<HirId>,
@@ -35,15 +35,15 @@ pub(crate) struct Rule<'gcx, T: StartMatch> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Rules<'gcx> {
-    pub(crate) expr_rules: Vec<Rule<'gcx, hir::Expr>>,
-    pub(crate) pattern_rules: Vec<Rule<'gcx, hir::Pat>>,
-    pub(crate) type_rules: Vec<Rule<'gcx, hir::Ty>>,
-    pub(crate) trait_ref_rules: Vec<Rule<'gcx, hir::TraitRef>>,
+pub(crate) struct Rules<'tcx> {
+    pub(crate) expr_rules: Vec<Rule<'tcx, hir::Expr>>,
+    pub(crate) pattern_rules: Vec<Rule<'tcx, hir::Pat>>,
+    pub(crate) type_rules: Vec<Rule<'tcx, hir::Ty>>,
+    pub(crate) trait_ref_rules: Vec<Rule<'tcx, hir::TraitRef>>,
 }
 
-impl<'gcx> Rules<'gcx> {
-    pub(crate) fn new() -> Rules<'gcx> {
+impl<'tcx> Rules<'tcx> {
+    pub(crate) fn new() -> Rules<'tcx> {
         Rules {
             expr_rules: Vec::new(),
             pattern_rules: Vec::new(),

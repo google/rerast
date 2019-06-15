@@ -32,7 +32,7 @@ impl ErrorWithSpan {
         }
     }
 
-    pub(crate) fn with_snippet<'a, 'gcx>(self, tcx: TyCtxt<'a, 'gcx, 'gcx>) -> RerastError {
+    pub(crate) fn with_snippet<'a, 'tcx>(self, tcx: TyCtxt<'tcx>) -> RerastError {
         RerastError {
             message: self.message,
             file_lines: Some(FileLines::from_lines_result(
