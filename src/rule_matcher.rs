@@ -28,7 +28,6 @@ use std::fmt::Debug;
 use std::mem;
 use syntax;
 use syntax::ast;
-use syntax::ast::NodeId;
 use syntax::ptr::P;
 use syntax::source_map::{self, Spanned};
 use syntax::symbol::Symbol;
@@ -1550,15 +1549,11 @@ struct ReplacementVisitor<'r, 'tcx, T: StartMatch> {
 
 impl<'r, 'tcx, T: StartMatch> ReplacementVisitor<'r, 'tcx, T> {
     // Returns a snippet of code for the supplied definition.
-    fn node_id_snippet(&self, node_id: NodeId) -> String {
+    fn hir_id_snippet(&self, hir_id: HirId) -> String {
         let source_map = self.tcx.sess.source_map();
         source_map
-            .span_to_snippet(self.tcx.hir().span(node_id))
+            .span_to_snippet(self.tcx.hir().span(hir_id))
             .unwrap()
-    }
-
-    fn hir_id_snippet(&self, hir_id: HirId) -> String {
-        self.node_id_snippet(self.tcx.hir().hir_to_node_id(hir_id))
     }
 
     // Check if the supplied expression is a placeholder variable. If it is, replace the supplied
