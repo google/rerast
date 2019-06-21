@@ -613,7 +613,7 @@ impl Matchable for hir::Expr {
             (&ExprKind::DropTemps(ref p_expr), &ExprKind::DropTemps(ref c_expr)) => {
                 p_expr.attempt_match(state, c_expr)
             }
-            (&ExprKind::Yield(ref p_expr), &ExprKind::Yield(ref c_expr)) => {
+            (&ExprKind::Yield(ref p_expr, _), &ExprKind::Yield(ref c_expr, _)) => {
                 p_expr.attempt_match(state, c_expr)
             }
             (&ExprKind::Path(ref p_path), &ExprKind::Path(ref c_path)) => {
