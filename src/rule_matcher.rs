@@ -28,7 +28,6 @@ use std::fmt::Debug;
 use std::mem;
 use syntax;
 use syntax::ast;
-use syntax::ptr::P;
 use syntax::source_map::{self, Spanned};
 use syntax::symbol::Symbol;
 use syntax_pos::{Span, SpanSnippetError, DUMMY_SP};
@@ -440,7 +439,17 @@ impl<T: Matchable> Matchable for [T] {
     }
 }
 
-impl<T: Matchable> Matchable for P<T> {
+impl<T: Matchable> Matchable for syntax::ptr::P<T> {
+    fn attempt_match<'r, 'a, 'tcx>(
+        &self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
+    ) -> bool {
+        (**self).attempt_match(state, &**code)
+    }
+}
+
+impl<T: Matchable> Matchable for hir::ptr::P<T> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
