@@ -598,14 +598,6 @@ impl Matchable for hir::Expr {
                 p_label.attempt_match(state, c_label)
             }
             (
-                &ExprKind::While(ref p_expr, ref p_block, ref p_name),
-                &ExprKind::While(ref c_expr, ref c_block, ref c_name),
-            ) => {
-                p_expr.attempt_match(state, c_expr)
-                    && p_block.attempt_match(state, c_block)
-                    && p_name.attempt_match(state, c_name)
-            }
-            (
                 &ExprKind::Closure(ref p_capture, _, ref p_body_id, _, ref p_gen),
                 &ExprKind::Closure(ref c_capture, _, ref c_body_id, _, ref c_gen),
             ) => {
