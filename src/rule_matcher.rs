@@ -1505,16 +1505,13 @@ fn get_original_spans(search_span: Span, code_span: Span) -> Option<(Span, Span)
 }
 
 fn is_same_expansion(a: &source_map::ExpnInfo, b: &source_map::ExpnInfo) -> bool {
-    use crate::source_map::ExpnFormat::*;
-    a.format == b.format
-        && match a.format {
-            MacroBang(_) => a.def_site == b.def_site,
-            // Not sure what we want to do here
-            MacroAttribute(_) => unimplemented!(),
-            // For desugaring, we ignore the span since it seems to just duplicate the span of the
-            // caller which definitely won't be the same for two separate occurences.
-            CompilerDesugaring(_) => true,
-        }
+    use crate::source_map::ExpnKind::*;
+    match (&a.kind, &b.kind) {
+        (Root, Root) => true,
+        (Macro(a_kind, a_descr), Macro(b_kind, b_descr)) => a_kind == b_kind && a_descr == b_descr,
+        (Desugaring(a_kind), Desugaring(b_kind)) => a_kind == b_kind,
+        _ => false,
+    }
 }
 
 // Searches the callsites of the first span until it finds one that is contained within the second
@@ -1594,9 +1591,7 @@ impl<'r, 'tcx, T: StartMatch> ReplacementVisitor<'r, 'tcx, T> {
     }
 }
 
-impl<'r, 'tcx, T: StartMatch> intravisit::Visitor<'tcx>
-    for ReplacementVisitor<'r, 'tcx, T>
-{
+impl<'r, 'tcx, T: StartMatch> intravisit::Visitor<'tcx> for ReplacementVisitor<'r, 'tcx, T> {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }

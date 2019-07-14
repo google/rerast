@@ -1,6 +1,6 @@
 [package]
 name = "rerast"
-version = "0.1.60"
+version = "0.1.61"
 license = "Apache-2.0"
 description = "An AST (abstract syntax tree) based search replace tool for code written in Rust"
 repository = "https://github.com/google/rerast"
