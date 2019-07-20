@@ -321,12 +321,12 @@ struct RerastCompilerCallbacks {
 }
 
 impl rustc_driver::Callbacks for RerastCompilerCallbacks {
-    fn after_analysis(&mut self, compiler: &interface::Compiler) -> bool {
+    fn after_analysis(&mut self, compiler: &interface::Compiler) -> rustc_driver::Compilation {
         compiler.session().abort_if_errors();
         compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
             self.output = find_and_apply_rules(tcx, &self.config);
         });
-        false // Don't continue
+        rustc_driver::Compilation::Stop
     }
 }
 

@@ -253,7 +253,7 @@ struct FindRulesState {
 }
 
 impl rustc_driver::Callbacks for FindRulesState {
-    fn after_analysis(&mut self, compiler: &interface::Compiler) -> bool {
+    fn after_analysis(&mut self, compiler: &interface::Compiler) -> rustc_driver::Compilation {
         compiler.session().abort_if_errors();
         compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
             let source_map = tcx.sess.source_map();
@@ -263,7 +263,7 @@ impl rustc_driver::Callbacks for FindRulesState {
             let filemap = if let Some(f) = maybe_filemap {
                 f
             } else {
-                return false;
+                return rustc_driver::Compilation::Stop;
             };
             let span = self.changed_span.to_span(&filemap);
             let mut rule_finder = RuleFinder {
@@ -310,7 +310,7 @@ impl rustc_driver::Callbacks for FindRulesState {
                     }
                 }
             }
-            false // Don't continue
+            rustc_driver::Compilation::Stop
         })
     }
 }
