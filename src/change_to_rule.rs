@@ -172,7 +172,7 @@ where
 fn span_within_span(span: Span, target: Span) -> Span {
     if target.contains(span) {
         span
-    } else if let Some(expn_info) = span.ctxt().outer().expn_info() {
+    } else if let Some(expn_info) = span.ctxt().outer_expn().expn_info() {
         span_within_span(expn_info.call_site, target)
     } else {
         // TODO: Better error handling here.

@@ -1489,8 +1489,8 @@ impl OperatorPrecedence {
 // together, then returns their spans.
 fn get_original_spans(search_span: Span, code_span: Span) -> Option<(Span, Span)> {
     match (
-        search_span.ctxt().outer().expn_info(),
-        code_span.ctxt().outer().expn_info(),
+        search_span.ctxt().outer_expn().expn_info(),
+        code_span.ctxt().outer_expn().expn_info(),
     ) {
         (Some(search_expn), Some(code_expn)) => {
             if is_same_expansion(&search_expn, &code_expn) {
@@ -1519,7 +1519,7 @@ fn is_same_expansion(a: &source_map::ExpnInfo, b: &source_map::ExpnInfo) -> bool
 fn span_within_span(span: Span, target: Span) -> Span {
     if target.contains(span) {
         span
-    } else if let Some(expn_info) = span.ctxt().outer().expn_info() {
+    } else if let Some(expn_info) = span.ctxt().outer_expn().expn_info() {
         span_within_span(expn_info.call_site, target)
     } else {
         // TODO: Better error handling here.
