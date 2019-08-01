@@ -1,39 +1,43 @@
-use assert_cli;
+use assert_cmd::prelude::*;
+use predicates::prelude::*;
+use std::process::Command;
 
-fn cargo_rerast(crate_root: &str) -> assert_cli::Assert {
+fn cargo_rerast(crate_root: &str) -> Command {
     // We can't use Assert.current_dir, because then Assert::cargo_binary doesn't work, instead we
     // pass the crate root as an argument and get our binary to change directories once it's
     // running.
-    assert_cli::Assert::cargo_binary("cargo-rerast").with_args(&[
-        "rerast",
-        "--crate_root",
-        crate_root,
-    ])
+    let mut cmd = Command::cargo_bin("cargo-rerast").unwrap();
+        cmd.arg("rerast")
+        .arg("--crate_root")
+        .arg(crate_root);
+        cmd
 }
 
 #[test]
 fn test_help() {
     cargo_rerast(".")
-        .with_args(&["--help"])
-        .stdout()
-        .contains("cargo rerast")
-        .execute()
-        .unwrap();
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("cargo rerast"));
 }
 
 #[test]
 fn test_simple_diff() {
-    // TODO: Remove once #10 is fixed.
-    let env = assert_cli::Environment::inherit().insert("RERAST_FULL_CARGO_CLEAN", "1");
     cargo_rerast("tests/crates/simple")
-        .with_env(&env)
-        .with_args(&["-p", "p0: i32, p1: i32"])
-        .with_args(&["-s", "p0 > p1"])
-        .with_args(&["-r", "p1 < p0"])
-        .with_args(&["--diff", "--color=never"])
-        .stdout()
-        .is(r#"
---- src/lib.rs
+        // TODO: Remove once #10 is fixed.
+        .env("RERAST_FULL_CARGO_CLEAN", "1")
+        .arg("-p")
+        .arg("p0: i32, p1: i32")
+        .arg("-s")
+        .arg("p0 > p1")
+        .arg("-r")
+        .arg("p1 < p0")
+        .arg("--diff")
+        .arg("--color=never")
+        .assert()
+        .stdout(predicate::eq(
+            r#"--- src/lib.rs
 +++ src/lib.rs
 @@ -8,7 +8,7 @@
  mod tests2 {
@@ -65,31 +69,29 @@ fn test_simple_diff() {
          } else {
              b
 
-
-"#)
-        .unwrap();
+"#,
+        ));
 }
 
 #[test]
 fn test_invalid_cargo_toml() {
     cargo_rerast("tests/crates/invalid_cargo_toml")
-        .with_args(&["-s", "file!()", "-r", "\"foo\""])
-        .with_args(&["--diff", "--color=never"])
-        .stderr()
-        .contains("cargo metadata failed")
-        .stderr()
-        .contains("could not parse input as TOML")
-        .fails()
-        .unwrap();
+        .args(&["-s", "file!()", "-r", "\"foo\""])
+        .args(&["--diff", "--color=never"])
+        .assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("cargo metadata failed")
+                .and(predicate::str::contains("could not parse input as TOML")),
+        );
 }
 
 #[test]
 fn test_compilation_error() {
     cargo_rerast("tests/crates/compilation_error")
-        .with_args(&["-s", "file!()", "-r", "\"foo\""])
-        .with_args(&["--diff", "--color=never"])
-        .stderr()
-        .contains("this is not an i32")
-        .fails()
-        .unwrap();
+        .args(&["-s", "file!()", "-r", "\"foo\""])
+        .args(&["--diff", "--color=never"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("this is not an i32"));
 }
