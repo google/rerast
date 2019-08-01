@@ -614,7 +614,6 @@ mod tests {
                #![feature(exclusive_range_pattern)]
                #![feature(async_await)]
                #![feature(generators)]
-               #![feature(await_macro)]
                "#
             .to_owned()
                 + header1
@@ -2158,16 +2157,6 @@ mod tests {
             "fn f1() {let _ = || {yield 1i32;};}",
             "fn f1() {let _ = || {yield 1i32 + 1;};}",
         );
-    }
-
-    #[test]
-    fn replace_await_macro() {
-        check(
-            "pub async fn a() -> i32 {unreachable!();}",
-            "pub async fn r1<T: std::future::Future>(r: T) {replace!(await!(r) => r.await)}",
-            "pub async fn f1() -> i32 {await!(a()) * 2}",
-            "pub async fn f1() -> i32 {a().await * 2}",
-        )
     }
 
     #[test]
