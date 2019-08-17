@@ -172,11 +172,9 @@ where
 fn span_within_span(span: Span, target: Span) -> Span {
     if target.contains(span) {
         span
-    } else if let Some(expn_info) = span.ctxt().outer_expn().expn_info() {
-        span_within_span(expn_info.call_site, target)
     } else {
-        // TODO: Better error handling here.
-        panic!("We never found a span within the target span");
+        let expn_info = span.ctxt().outer_expn().expn_data();
+        span_within_span(expn_info.call_site, target)
     }
 }
 
@@ -186,7 +184,7 @@ impl RelativeSpan {
     fn new(absolute_span: Span, filemap: &syntax_pos::SourceFile) -> RelativeSpan {
         let absolute_span = span_within_span(
             absolute_span,
-            Span::new(filemap.start_pos, filemap.end_pos, syntax_pos::NO_EXPANSION),
+            Span::with_root_ctxt(filemap.start_pos, filemap.end_pos),
         );
         let start_pos = filemap.start_pos;
         assert!(absolute_span.lo() >= start_pos);
@@ -196,11 +194,7 @@ impl RelativeSpan {
 
     fn absolute(&self, filemap: &syntax_pos::SourceFile) -> Span {
         let start_pos = filemap.start_pos;
-        let result = Span::new(
-            self.0.start + start_pos,
-            self.0.end + start_pos,
-            syntax_pos::NO_EXPANSION,
-        );
+        let result = Span::with_root_ctxt(self.0.start + start_pos, self.0.end + start_pos);
         assert!(result.lo() >= filemap.start_pos);
         assert!(result.hi() <= filemap.end_pos);
         result
@@ -234,7 +228,7 @@ impl ChangedSpan {
         Span::new(
             filemap.start_pos + BytePos::from_usize(self.common_prefix),
             filemap.end_pos - BytePos::from_usize(self.common_suffix),
-            SyntaxContext::empty(),
+            SyntaxContext::root(),
         )
     }
 }
@@ -446,13 +440,13 @@ fn substitute_placeholders(
     let mut start = span.lo();
     for &(subst_span, ref substitution) in substitutions.iter() {
         result += &source_map
-            .span_to_snippet(Span::new(start, subst_span.lo(), syntax_pos::NO_EXPANSION))
+            .span_to_snippet(Span::with_root_ctxt(start, subst_span.lo()))
             .unwrap();
         result += substitution;
         start = subst_span.hi();
     }
     result += &source_map
-        .span_to_snippet(Span::new(start, span.hi(), syntax_pos::NO_EXPANSION))
+        .span_to_snippet(Span::with_root_ctxt(start, span.hi()))
         .unwrap();
     result
 }
@@ -600,7 +594,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
     }
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr) {
-        if expr.span.ctxt() != syntax_pos::NO_EXPANSION {
+        if expr.span.from_expansion() {
             intravisit::walk_expr(self, expr);
         } else if expr.span.contains(self.changed_span) {
             if let (Some(body_id), Some(item)) = (self.body_id, self.current_item) {

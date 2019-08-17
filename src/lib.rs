@@ -265,8 +265,8 @@ impl<'tcx> Replacer<'tcx> {
                 .span_to_snippet(span)
                 .unwrap_or_else(|_| "<Span crosses file boundaries>".to_owned())
         );
-        if span.ctxt() == SyntaxContext::empty() {
-            println!("SyntaxContext::empty()");
+        if span.ctxt() == SyntaxContext::root() {
+            println!("SyntaxContext::root()");
         }
         for bt in span.macro_backtrace() {
             println!(

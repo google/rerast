@@ -869,11 +869,9 @@ impl Matchable for hir::Pat {
                 &Struct(ref p_qpath, ref p_pats, p_dotdot),
                 &Struct(ref c_qpath, ref c_pats, c_dotdot),
             ) => {
-                fn sorted_by_name(
-                    pats: &hir::HirVec<Spanned<hir::FieldPat>>,
-                ) -> Vec<&Spanned<hir::FieldPat>> {
+                fn sorted_by_name(pats: &hir::HirVec<hir::FieldPat>) -> Vec<&hir::FieldPat> {
                     let mut result: Vec<_> = pats.iter().collect();
-                    result.sort_by_key(|pat| pat.node.ident.name);
+                    result.sort_by_key(|pat| pat.ident.name);
                     result
                 }
 
@@ -1488,23 +1486,22 @@ impl OperatorPrecedence {
 // code invoked different macros, so returns None. If both reach the top (no expansions remaining)
 // together, then returns their spans.
 fn get_original_spans(search_span: Span, code_span: Span) -> Option<(Span, Span)> {
-    match (
-        search_span.ctxt().outer_expn().expn_info(),
-        code_span.ctxt().outer_expn().expn_info(),
-    ) {
-        (Some(search_expn), Some(code_expn)) => {
+    match (search_span.from_expansion(), code_span.from_expansion()) {
+        (true, true) => {
+            let search_expn = search_span.ctxt().outer_expn().expn_data();
+            let code_expn = code_span.ctxt().outer_expn().expn_data();
             if is_same_expansion(&search_expn, &code_expn) {
                 get_original_spans(search_expn.call_site, code_expn.call_site)
             } else {
                 None
             }
         }
-        (None, None) => Some((search_span, code_span)),
+        (false, false) => Some((search_span, code_span)),
         _ => None,
     }
 }
 
-fn is_same_expansion(a: &source_map::ExpnInfo, b: &source_map::ExpnInfo) -> bool {
+fn is_same_expansion(a: &source_map::ExpnData, b: &source_map::ExpnData) -> bool {
     use crate::source_map::ExpnKind::*;
     match (&a.kind, &b.kind) {
         (Root, Root) => true,
@@ -1519,11 +1516,9 @@ fn is_same_expansion(a: &source_map::ExpnInfo, b: &source_map::ExpnInfo) -> bool
 fn span_within_span(span: Span, target: Span) -> Span {
     if target.contains(span) {
         span
-    } else if let Some(expn_info) = span.ctxt().outer_expn().expn_info() {
-        span_within_span(expn_info.call_site, target)
     } else {
-        // TODO: Better error handling here.
-        panic!("We never found a span within the target span");
+        let expn_info = span.ctxt().outer_expn().expn_data();
+        span_within_span(expn_info.call_site, target)
     }
 }
 

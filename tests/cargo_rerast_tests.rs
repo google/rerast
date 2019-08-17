@@ -7,10 +7,8 @@ fn cargo_rerast(crate_root: &str) -> Command {
     // pass the crate root as an argument and get our binary to change directories once it's
     // running.
     let mut cmd = Command::cargo_bin("cargo-rerast").unwrap();
-        cmd.arg("rerast")
-        .arg("--crate_root")
-        .arg(crate_root);
-        cmd
+    cmd.arg("rerast").arg("--crate_root").arg(crate_root);
+    cmd
 }
 
 #[test]
