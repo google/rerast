@@ -494,7 +494,9 @@ impl RerastCompilerDriver {
             .arg("--sysroot")
             .arg(rustup_sysroot())
             .arg("--allow")
-            .arg("dead_code");
+            .arg("dead_code")
+            .arg("--allow")
+            .arg("deprecated");
         let mut file_loader = box InMemoryFileLoader::new(file_loader);
         // In an ideal world we might get rust to parse the arguments then ask it what the root code
         // filename is. In the absence of being able to do that, this will have to do.
@@ -605,6 +607,7 @@ mod tests {
             let header1 = r#"#![allow(unused_imports)]
                          #![allow(unused_variables)]
                          #![allow(unused_must_use)]
+                         #![allow(bare_trait_objects)]
                          "#;
             let header2 = "use crate::common::*;\n";
             let code_header = r#"
@@ -612,7 +615,6 @@ mod tests {
                #![feature(box_patterns)]
                #![feature(slice_patterns)]
                #![feature(exclusive_range_pattern)]
-               #![feature(async_await)]
                #![feature(generators)]
                "#
             .to_owned()
@@ -1813,12 +1815,12 @@ mod tests {
         check(
             "",
             r#"fn r1(i: i32) {
-                     replace_pattern!(1 ... 5 = i => 1 .. 6 = i);
-                     replace_pattern!(8 .. 10 = i => 8 ... 9 = i);
+                     replace_pattern!(1 ..= 5 = i => 1 .. 6 = i);
+                     replace_pattern!(8 .. 10 = i => 8 ..= 9 = i);
                  }"#,
             r#"fn f1(v: i32) -> i32 {
                      match v {
-                         1 ... 5 => {42}
+                         1 ..= 5 => {42}
                          8 .. 10 => {41}
                          _ => {40}
                      }
@@ -1826,7 +1828,7 @@ mod tests {
             r#"fn f1(v: i32) -> i32 {
                      match v {
                          1 .. 6 => {42}
-                         8 ... 9 => {41}
+                         8 ..= 9 => {41}
                          _ => {40}
                      }
                  }"#,
