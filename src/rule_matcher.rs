@@ -244,9 +244,9 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
                 // We want to ensure that visit_expr is not called for the root expression of our
                 // body (the block), since we don't want to replace it. But we still want to visit
                 // the body arguments, so we do so explicitly.
-                for arg in &body.arguments {
-                    self.visit_id(arg.hir_id);
-                    self.visit_pat(&arg.pat);
+                for param in &body.params {
+                    self.visit_id(param.hir_id);
+                    self.visit_pat(&param.pat);
                 }
                 self.process_children_of_expression(&body.value);
             }
@@ -656,12 +656,12 @@ impl Matchable for hir::Body {
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
-        self.arguments.attempt_match(state, &code.arguments)
+        self.params.attempt_match(state, &code.params)
             && self.value.attempt_match(state, &code.value)
     }
 }
 
-impl Matchable for hir::Arg {
+impl Matchable for hir::Param {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,

@@ -44,11 +44,7 @@ impl<'tcx, T: StartMatch + 'tcx> Rule<'tcx, T> {
             state: ValidatorState {
                 tcx,
                 errors: Vec::new(),
-                placeholders: rule_body
-                    .arguments
-                    .iter()
-                    .map(|arg| arg.pat.hir_id)
-                    .collect(),
+                placeholders: rule_body.params.iter().map(|arg| arg.pat.hir_id).collect(),
                 bound_placeholders: HashSet::new(),
             },
         };

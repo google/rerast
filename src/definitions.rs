@@ -79,10 +79,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for RerastDefinitionsFinder<'tcx> {
         let fn_id = self.tcx.hir().body_owner_def_id(body.id());
         if self.tcx.item_name(fn_id) == self.rerast_types_symbol {
             let tables = self.tcx.typeck_tables_of(fn_id);
-            let mut types = body
-                .arguments
-                .iter()
-                .map(|arg| tables.node_type(arg.hir_id));
+            let mut types = body.params.iter().map(|arg| tables.node_type(arg.hir_id));
             self.definitions = Some(RerastDefinitions {
                 statements: types
                     .next()
