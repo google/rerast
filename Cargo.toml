@@ -15,17 +15,13 @@ authors = [
 
 [dependencies]
 rerast_macros = { version = "0.1.12", path = "rerast_macros" }
-itertools = "0.5.*"
-clap = "2.*"
-json = "0.11.10"
-diff = "0.1.10"
-colored = "1.6.0"
-clippy = {version = "0.*", optional = true}
-failure = "0.1.1"
+itertools = "0.8.0"
+clap = "2.33.0"
+json = "0.11.15"
+diff = "0.1.11"
+colored = "1.8.0"
+failure = "0.1.5"
 
 [dev-dependencies]
 predicates = "1.0.1"
 assert_cmd = "0.11.1"
-
-[features]
-#default = ["clippy"]
