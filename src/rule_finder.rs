@@ -89,7 +89,7 @@ impl<'tcx> RuleFinder<'tcx> {
         // Given some arms of a match statement, returns the block for arm_name if any.
         fn get_arm(arms: &[hir::Arm], arm_name: Symbol) -> Option<&hir::Block> {
             for arm in arms {
-                if let hir::PatKind::Path(hir::QPath::Resolved(None, ref path)) = arm.pats[0].node {
+                if let hir::PatKind::Path(hir::QPath::Resolved(None, ref path)) = arm.pat.node {
                     if let Some(segment) = path.segments.last() {
                         if segment.ident.name == arm_name {
                             if let hir::ExprKind::Block(ref block, _) = arm.body.node {
@@ -350,7 +350,7 @@ impl StartMatch for hir::Pat {
                     // The user's pattern is wrapped in Some(x) in order to make all patterns
                     // refutable. Otherwise we'd need the user to use a different macro for
                     // refutable and irrefutable patterns which wouldn't be very ergonomic.
-                    if let hir::PatKind::TupleStruct(_, ref patterns, _) = arms[0].pats[0].node {
+                    if let hir::PatKind::TupleStruct(_, ref patterns, _) = arms[0].pat.node {
                         return Ok(&patterns[0]);
                     }
                 }

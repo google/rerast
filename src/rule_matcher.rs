@@ -812,7 +812,7 @@ impl Matchable for hir::Arm {
         // For now only accept if attrs is empty
         self.attrs.is_empty()
             && code.attrs.is_empty()
-            && self.pats.attempt_match(state, &code.pats)
+            && self.pat.attempt_match(state, &code.pat)
             && self.guard.attempt_match(state, &code.guard)
             && self.body.attempt_match(state, &code.body)
     }
