@@ -368,7 +368,7 @@ fn build_rule<'a, 'tcx: 'a>(
     for ph in placeholders {
         let ph_ty = type_tables.expr_ty(ph.expr);
         for subtype in ph_ty.walk() {
-            if let TyKind::Param(..) = subtype.sty {
+            if let TyKind::Param(..) = subtype.kind {
                 uses_type_params = true;
             }
         }
