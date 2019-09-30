@@ -89,10 +89,10 @@ impl<'tcx> RuleFinder<'tcx> {
         // Given some arms of a match statement, returns the block for arm_name if any.
         fn get_arm(arms: &[hir::Arm], arm_name: Symbol) -> Option<&hir::Block> {
             for arm in arms {
-                if let hir::PatKind::Path(hir::QPath::Resolved(None, ref path)) = arm.pat.node {
+                if let hir::PatKind::Path(hir::QPath::Resolved(None, ref path)) = arm.pat.kind {
                     if let Some(segment) = path.segments.last() {
                         if segment.ident.name == arm_name {
-                            if let hir::ExprKind::Block(ref block, _) = arm.body.node {
+                            if let hir::ExprKind::Block(ref block, _) = arm.body.kind {
                                 return Some(block);
                             }
                         }
@@ -118,10 +118,10 @@ impl<'tcx> RuleFinder<'tcx> {
             // into this form. e.g. if the async function has an argument r,
             // then the function will contain a block with the first statement
             // being let r = r;
-            if let hir::ExprKind::Block(block, ..) = &body.value.node {
+            if let hir::ExprKind::Block(block, ..) = &body.value.kind {
                 for stmt in &block.stmts {
-                    if let hir::StmtKind::Local(local) = &stmt.node {
-                        if let hir::PatKind::Binding(_, hir_id, ..) = &local.pat.node {
+                    if let hir::StmtKind::Local(local) = &stmt.kind {
+                        if let hir::PatKind::Binding(_, hir_id, ..) = &local.pat.kind {
                             placeholder_ids.push(*hir_id);
                         }
                     } else {
@@ -163,7 +163,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
     }
 
     fn visit_item(&mut self, item: &'tcx hir::Item) {
-        if let hir::ItemKind::Mod(_) = item.node {
+        if let hir::ItemKind::Mod(_) = item.kind {
             if item.ident.name == self.rules_mod_symbol {
                 self.in_rules_module = true;
                 intravisit::walk_item(self, item);
@@ -182,8 +182,8 @@ impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
             return;
         }
         use crate::hir::ExprKind;
-        if let ExprKind::Match(ref match_expr, ref arms, _) = expr.node {
-            if let ExprKind::MethodCall(ref _name, ref _tys, ref args) = match_expr.node {
+        if let ExprKind::Match(ref match_expr, ref arms, _) = expr.kind {
+            if let ExprKind::MethodCall(ref _name, ref _tys, ref args) = match_expr.kind {
                 if let Some(&body_id) = self.body_ids.last() {
                     let type_tables = self
                         .tcx
@@ -245,8 +245,8 @@ impl StartMatch for hir::Expr {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::StmtKind::Semi(ref addr_expr) = block.stmts[0].node {
-                if let hir::ExprKind::AddrOf(_, ref expr) = addr_expr.node {
+            if let hir::StmtKind::Semi(ref addr_expr) = block.stmts[0].kind {
+                if let hir::ExprKind::AddrOf(_, ref expr) = addr_expr.kind {
                     return Ok(&**expr);
                 }
             }
@@ -276,9 +276,9 @@ impl StartMatch for hir::Ty {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::StmtKind::Local(ref local) = block.stmts[0].node {
+            if let hir::StmtKind::Local(ref local) = block.stmts[0].kind {
                 if let Some(ref ref_ty) = local.ty {
-                    if let hir::TyKind::Rptr(_, ref mut_ty) = ref_ty.node {
+                    if let hir::TyKind::Rptr(_, ref mut_ty) = ref_ty.kind {
                         return Ok(&*mut_ty.ty);
                     }
                 }
@@ -309,7 +309,7 @@ impl StartMatch for hir::TraitRef {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         let ty = <hir::Ty as StartMatch>::extract_root(block)?;
-        if let hir::TyKind::TraitObject(ref bounds, _) = ty.node {
+        if let hir::TyKind::TraitObject(ref bounds, _) = ty.kind {
             if bounds.len() == 1 {
                 return Ok(&bounds[0].trait_ref);
             } else {
@@ -345,12 +345,12 @@ impl StartMatch for hir::Pat {
     }
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::StmtKind::Semi(ref expr) = block.stmts[0].node {
-                if let hir::ExprKind::Match(_, ref arms, _) = expr.node {
+            if let hir::StmtKind::Semi(ref expr) = block.stmts[0].kind {
+                if let hir::ExprKind::Match(_, ref arms, _) = expr.kind {
                     // The user's pattern is wrapped in Some(x) in order to make all patterns
                     // refutable. Otherwise we'd need the user to use a different macro for
                     // refutable and irrefutable patterns which wouldn't be very ergonomic.
-                    if let hir::PatKind::TupleStruct(_, ref patterns, _) = arms[0].pat.node {
+                    if let hir::PatKind::TupleStruct(_, ref patterns, _) = arms[0].pat.kind {
                         return Ok(&patterns[0]);
                     }
                 }

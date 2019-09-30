@@ -115,7 +115,7 @@ where
     }
 
     fn walk_expr_children(&mut self, expr: &'tcx hir::Expr) {
-        if let hir::ExprKind::Call(ref _expr_fn, ref args) = expr.node {
+        if let hir::ExprKind::Call(ref _expr_fn, ref args) = expr.kind {
             // Ignore expr_fn as a candidate, just consider the args.
             for arg in args {
                 use rustc::hir::intravisit::Visitor;
@@ -376,7 +376,7 @@ fn build_rule<'a, 'tcx: 'a>(
     let generics_string;
     let where_string;
     if uses_type_params {
-        if let Some(generics) = item.node.generics() {
+        if let Some(generics) = item.kind.generics() {
             generics_string = source_map.span_to_snippet(generics.span).unwrap();
             let mut where_predicate_strings = Vec::new();
             for predicate in &generics.where_clause.predicates {

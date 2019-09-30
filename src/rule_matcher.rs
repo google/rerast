@@ -219,7 +219,7 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
     }
 
     fn visit_item(&mut self, item: &'tcx hir::Item) {
-        if let hir::ItemKind::Mod(_) = item.node {
+        if let hir::ItemKind::Mod(_) = item.kind {
             // Avoid trying to find matches in the rules file.
             if item.ident.name == self.rule_mod_symbol {
                 return;
@@ -239,7 +239,7 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
     fn visit_body(&mut self, body: &'tcx hir::Body) {
         let old_body_id = self.body_id;
         self.body_id = Some(body.id());
-        match body.value.node {
+        match body.value.kind {
             hir::ExprKind::Block(_, _) => {
                 // We want to ensure that visit_expr is not called for the root expression of our
                 // body (the block), since we don't want to replace it. But we still want to visit
@@ -376,13 +376,13 @@ impl<'r, 'a, 'tcx: 'a> MatchState<'r, 'a, 'tcx> {
     // Checks if the supplied statement is a placeholder for a sequence of statements. e.g. `a();`
     // where `a` is of type rerast::Statements. If it is, returns the HirId of the placeholder.
     fn opt_statements_placeholder_hir_id(&self, stmt: &hir::Stmt) -> Option<HirId> {
-        if let hir::StmtKind::Semi(ref expr) = stmt.node {
-            if let hir::ExprKind::Call(ref function, _) = expr.node {
+        if let hir::StmtKind::Semi(ref expr) = stmt.kind {
+            if let hir::ExprKind::Call(ref function, _) = expr.kind {
                 let fn_ty = self.rule_type_tables.expr_ty(function);
                 if !self.can_sub(fn_ty, self.rerast_definitions.statements) {
                     return None;
                 }
-                if let hir::ExprKind::Path(ref path) = function.node {
+                if let hir::ExprKind::Path(ref path) = function.kind {
                     if let Some(hir_id) = hir_id_from_path(path) {
                         if self.placeholder_types_by_id.contains_key(&hir_id) {
                             return Some(hir_id);
@@ -476,7 +476,7 @@ impl Matchable for hir::Expr {
         code: &'tcx Self,
     ) -> bool {
         use rustc::hir::ExprKind;
-        let result = match (&self.node, &code.node) {
+        let result = match (&self.kind, &code.kind) {
             // TODO: ExprType, ExprInlineAsm (or more likely report that we don't support it).
             (&ExprKind::Call(ref p_fn, ref p_args), &ExprKind::Call(ref c_fn, ref c_args)) => {
                 p_fn.attempt_match(state, c_fn) && p_args.attempt_match(state, c_args)
@@ -643,7 +643,7 @@ impl Matchable for hir::Expr {
         if !result {
             debug!(
                 state,
-                "Expression:   {:?}\ndidn't match: {:?}", code.node, self.node
+                "Expression:   {:?}\ndidn't match: {:?}", code.kind, self.kind
             );
         }
         result && all_expansions_equal(self.span, code.span())
@@ -677,7 +677,7 @@ impl Matchable for hir::Ty {
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
-        self.node.attempt_match(state, &code.node)
+        self.kind.attempt_match(state, &code.kind)
     }
 }
 
@@ -839,7 +839,7 @@ impl Matchable for hir::Pat {
         code: &'tcx Self,
     ) -> bool {
         use crate::hir::PatKind::*;
-        match (&self.node, &code.node) {
+        match (&self.kind, &code.kind) {
             (&Wild, &Wild) => true,
             (&Binding(p_mode, p_hir_id, ref _p_name, ref p_pat), _) => {
                 if state.bindings_can_match_patterns {
@@ -848,7 +848,7 @@ impl Matchable for hir::Pat {
                         Placeholder::new(PlaceholderContents::Pattern(code)),
                     );
                     true
-                } else if let Binding(c_mode, c_hir_id, ref c_name, ref c_pat) = code.node {
+                } else if let Binding(c_mode, c_hir_id, ref c_name, ref c_pat) = code.kind {
                     if p_mode == c_mode && p_pat.is_none() && c_pat.is_none() {
                         state.match_placeholders.matched_variable_decls.insert(
                             p_hir_id,
@@ -1057,7 +1057,7 @@ impl Matchable for hir::Stmt {
         code: &'tcx Self,
     ) -> bool {
         use rustc::hir::StmtKind;
-        match (&self.node, &code.node) {
+        match (&self.kind, &code.kind) {
             (&StmtKind::Expr(ref p), &StmtKind::Expr(ref c))
             | (&StmtKind::Semi(ref p), &StmtKind::Semi(ref c)) => p.attempt_match(state, c),
             (&StmtKind::Local(ref p), &StmtKind::Local(ref c)) => p.attempt_match(state, c),
@@ -1098,7 +1098,7 @@ impl Matchable for hir::Item {
         );
         self.attrs.attempt_match(state, &*code.attrs)
             && self.vis.attempt_match(state, &code.vis)
-            && self.node.attempt_match(state, &code.node)
+            && self.kind.attempt_match(state, &code.kind)
     }
 }
 
@@ -1436,7 +1436,7 @@ pub(crate) enum OperatorPrecedence {
 impl OperatorPrecedence {
     fn from_expr(expr: &hir::Expr) -> Option<OperatorPrecedence> {
         use rustc::hir::ExprKind;
-        Some(match expr.node {
+        Some(match expr.kind {
             ExprKind::Unary(..) => OperatorPrecedence::Unary,
             ExprKind::Binary(op, ..) => {
                 use rustc::hir::BinOpKind;
@@ -1552,7 +1552,7 @@ impl<'r, 'tcx, T: StartMatch> ReplacementVisitor<'r, 'tcx, T> {
     // Check if the supplied expression is a placeholder variable. If it is, replace the supplied
     // span with whatever was bound to the placeholder and return true.
     fn process_expr(&mut self, expr: &'tcx hir::Expr, placeholder_span: Span) -> bool {
-        if let hir::ExprKind::Path(ref path) = expr.node {
+        if let hir::ExprKind::Path(ref path) = expr.kind {
             if let Some(hir_id) = hir_id_from_path(path) {
                 if let Some(placeholder) = self
                     .current_match
@@ -1600,8 +1600,8 @@ impl<'r, 'tcx, T: StartMatch> intravisit::Visitor<'tcx> for ReplacementVisitor<'
     }
 
     fn visit_stmt(&mut self, stmt: &'tcx hir::Stmt) {
-        if let hir::StmtKind::Semi(ref expr) = stmt.node {
-            if let hir::ExprKind::Call(ref expr_fn, _) = expr.node {
+        if let hir::StmtKind::Semi(ref expr) = stmt.kind {
+            if let hir::ExprKind::Call(ref expr_fn, _) = expr.kind {
                 if self.process_expr(expr_fn, stmt.span) {
                     return;
                 }
@@ -1611,7 +1611,7 @@ impl<'r, 'tcx, T: StartMatch> intravisit::Visitor<'tcx> for ReplacementVisitor<'
     }
 
     fn visit_pat(&mut self, pat: &'tcx hir::Pat) {
-        if let hir::PatKind::Binding(_, hir_id, ref ident, _) = pat.node {
+        if let hir::PatKind::Binding(_, hir_id, ref ident, _) = pat.kind {
             if let Some(search_hir_id) = self
                 .current_match
                 .rule
