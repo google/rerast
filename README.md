@@ -17,6 +17,12 @@ Ensuring you have the latest nightly toolchain installed (`rustup update nightly
 cargo +nightly install rerast
 ```
 
+You also need the rustc-dev component installed for the nightly compiler. To get this, run:
+
+```sh
+rustup component add --toolchain nightly rustc-dev
+```
+
 ## Usage
 
 Basic operations can be performed entirely from the command line

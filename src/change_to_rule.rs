@@ -553,7 +553,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for ReferencedPathsFinder<'tcx> {
         if let crate::hir::def::Res::Def(_, def_id) = path.res {
             let mut qualified_path = String::new();
             for component in self.tcx.def_path(def_id).data {
-                write!(qualified_path, "::{}", component.data.as_interned_str()).unwrap();
+                write!(qualified_path, "::{}", component.data.as_symbol()).unwrap();
             }
             self.result.insert(qualified_path);
         }
