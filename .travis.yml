@@ -1,12 +1,11 @@
 language: rust
 rust:
- - nightly
+  - nightly
 os:
-   - linux
-   - osx
-cache:
-  directories:
-    - $HOME/.cargo
+  - linux
+  - osx
+install:
+  - rustup component add --toolchain nightly rustc-dev
 notifications:
   email:
     - rerast-dev@googlegroups.com
