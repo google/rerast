@@ -90,9 +90,6 @@ impl FileLines {
             }),
             Err(span_lines_error) => Err(FileLinesError {
                 message: match span_lines_error {
-                    SpanLinesError::IllFormedSpan(span) => {
-                        format!("Unable to report location. Ill-formed span: {:?}", span)
-                    }
                     SpanLinesError::DistinctSources(_) => {
                         format!("Unable to report location. Spans distinct sources")
                     }
