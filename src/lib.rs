@@ -410,9 +410,36 @@ impl<'tcx> intravisit::Visitor<'tcx> for DeclaredNamesFinder<'tcx> {
     }
 }
 
-// Currently we require use of rustup
-fn rustup_sysroot() -> String {
-    env!("RUSTUP_HOME").to_owned() + "/toolchains/" + env!("RUSTUP_TOOLCHAIN")
+fn rust_sysroot() -> Result<String, RerastErrors> {
+    // We either compute the sysroot based on the compile-time values of the
+    // rustup environment variables RUSTUP_HOME and RUSTUP_TOOLCHAIN, or failing
+    // that, we run `rustc --print sysroot` at runtime.
+    if let (Some(rustup_home), Some(toolchain)) =
+        (option_env!("RUSTUP_HOME"), option_env!("RUSTUP_TOOLCHAIN"))
+    {
+        Ok((rustup_home.to_owned() + "/toolchains/" + toolchain).into())
+    } else {
+        match std::process::Command::new("rustc")
+            .arg("--print")
+            .arg("sysroot")
+            .output()
+        {
+            Ok(out) => {
+                // -1 is to remove trailing newline.
+                match std::str::from_utf8(&out.stdout[0..out.stdout.len() - 1]) {
+                    Ok(sysroot) => Ok(sysroot.to_owned()),
+                    Err(err) => Err(RerastErrors::with_message(format!(
+                        "`rustc --print sysroot` returned invalid UTF8: {:?}",
+                        err
+                    ))),
+                }
+            }
+            Err(err) => Err(RerastErrors::with_message(format!(
+                "`rustc --print sysroot` failed: {:?}",
+                err
+            ))),
+        }
+    }
 }
 
 fn run_compiler(
@@ -461,16 +488,6 @@ impl RerastCompilerDriver {
             .map(std::convert::AsRef::as_ref)
     }
 
-    // Returns the argument after the first argument that's equal to before.
-    pub fn get_arg_after(&self, before: &str) -> Option<&str> {
-        for two_args in self.invocation_info.args.windows(2) {
-            if two_args[0] == before {
-                return Some(&two_args[1]);
-            }
-        }
-        None
-    }
-
     // TODO: Consider just removing this method.
     pub fn apply_rules_from_string<T: FileLoader + Send + Sync + 'static>(
         &self,
@@ -488,11 +505,12 @@ impl RerastCompilerDriver {
         rules: String,
         config: Config,
     ) -> Result<RerastOutput, RerastErrors> {
+        let sysroot = crate::rust_sysroot()?;
         let invocation_info = self
             .invocation_info
             .clone()
             .arg("--sysroot")
-            .arg(rustup_sysroot())
+            .arg(sysroot)
             .arg("--allow")
             .arg("dead_code")
             .arg("--allow")
