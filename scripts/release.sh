@@ -15,4 +15,4 @@ cargo build
 cargo test --all
 cargo publish
 git tag "$TAG"
-git push --tags
+git push
