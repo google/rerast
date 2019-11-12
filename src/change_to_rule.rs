@@ -18,6 +18,7 @@
 extern crate getopts;
 extern crate rustc;
 extern crate rustc_driver;
+extern crate rustc_parse;
 extern crate syntax;
 extern crate syntax_pos;
 
@@ -34,7 +35,6 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use syntax::parse;
 use syntax::sess::ParseSess;
 use syntax::source_map::{FileLoader, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
@@ -151,8 +151,11 @@ where
                 .source_map()
                 .span_to_snippet(expr.span)
                 .unwrap();
-            let session = ParseSess::new(FilePathMapping::empty());
-            let stream = parse::parse_stream_from_source_str(
+            let session = ParseSess::new(
+                FilePathMapping::empty(),
+                syntax_expand::config::process_configure_mod,
+            );
+            let stream = rustc_parse::parse_stream_from_source_str(
                 syntax_pos::FileName::anon_source_code(&snippet),
                 snippet,
                 &session,
@@ -474,8 +477,11 @@ impl<'tcx, 'placeholders> PlaceholderMatcher<'tcx, 'placeholders> {
                     uses: Vec::new(),
                 };
                 for other in matching_others {
-                    let session = ParseSess::new(FilePathMapping::empty());
-                    let stream = parse::parse_stream_from_source_str(
+                    let session = ParseSess::new(
+                        FilePathMapping::empty(),
+                        syntax_expand::config::process_configure_mod,
+                    );
+                    let stream = rustc_parse::parse_stream_from_source_str(
                         syntax_pos::FileName::Custom("left".to_owned()),
                         source.clone(),
                         &session,
@@ -483,7 +489,7 @@ impl<'tcx, 'placeholders> PlaceholderMatcher<'tcx, 'placeholders> {
                     );
                     let other_span = other.data.absolute(&*self.other_filemap);
                     let other_source = source_map.span_to_snippet(other_span).unwrap();
-                    let other_stream = parse::parse_stream_from_source_str(
+                    let other_stream = rustc_parse::parse_stream_from_source_str(
                         syntax_pos::FileName::Custom("right".to_owned()),
                         other_source,
                         &session,

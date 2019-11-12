@@ -78,7 +78,9 @@ extern crate rustc;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_interface;
+extern crate rustc_parse;
 extern crate syntax;
+extern crate syntax_expand;
 extern crate syntax_pos;
 
 pub mod change_to_rule;

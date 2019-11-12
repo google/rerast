@@ -754,15 +754,15 @@ impl Matchable for hir::PolyTraitRef {
     }
 }
 
-impl Matchable for hir::CaptureClause {
+impl Matchable for hir::CaptureBy {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
         match (self, code) {
-            (hir::CaptureClause::CaptureByValue, hir::CaptureClause::CaptureByValue)
-            | (hir::CaptureClause::CaptureByRef, hir::CaptureClause::CaptureByRef) => true,
+            (hir::CaptureBy::Value, hir::CaptureBy::Value)
+            | (hir::CaptureBy::Ref, hir::CaptureBy::Ref) => true,
             _ => false,
         }
     }

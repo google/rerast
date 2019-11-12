@@ -174,13 +174,15 @@ pub(crate) fn apply_substitutions<'a, S: SpanT + Sized + Debug>(
 
 /// Returns whether the supplied code is a single tokentree - e.g. a parenthesised expression.
 fn code_is_single_tree(code: &str) -> bool {
-    use syntax::parse;
     use syntax::sess::ParseSess;
     use syntax::source_map::FilePathMapping;
     use syntax::tokenstream::TokenTree;
 
-    let session = ParseSess::new(FilePathMapping::empty());
-    let ts = parse::parse_stream_from_source_str(
+    let session = ParseSess::new(
+        FilePathMapping::empty(),
+        syntax_expand::config::process_configure_mod,
+    );
+    let ts = rustc_parse::parse_stream_from_source_str(
         syntax_pos::FileName::anon_source_code(code),
         code.to_owned(),
         &session,
