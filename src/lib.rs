@@ -1309,19 +1309,19 @@ mod tests {
     // extra ; - search this crate for ends_with(";") - there's a workaround for macros consuming
     // semicolons that follow them and the workaround may no longer be necessary.
     #[test]
-    fn match_macro() {
+    fn match_macro_replace_question_mark() {
         TestBuilder::new()
             .edition("2015") // try is a keyword in 2018
             .common("pub fn foo() -> Result<i32, i32> {Ok(42)}")
             .rule(
                 "use std::fmt::Debug; \
                  fn bar<T, E: Debug>(r: Result<T, E>) -> Result<T, E> {\
-                     replace!(try!(r) => r.unwrap());
+                     replace!(try!(r) => r?);
                      unreachable!();
                  }",
             )
             .input("fn f1() -> Result<i32, i32> {try!(foo()); Ok(1)}")
-            .expect("fn f1() -> Result<i32, i32> {foo().unwrap(); Ok(1)}");
+            .expect("fn f1() -> Result<i32, i32> {foo()?; Ok(1)}");
     }
 
     // Check that when a placeholder matches an expression that is the result of a macro expansion,

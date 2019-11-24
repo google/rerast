@@ -1637,8 +1637,16 @@ impl<'r, 'tcx, T: StartMatch> intravisit::Visitor<'tcx> for ReplacementVisitor<'
                     // We only replace variable names if their code snippet
                     // matches their name. Otherwise we risk trying to replace
                     // variables in compiler generated code, which generally has
-                    // large spans that encompas the whole expression.
-                    if code == matched_var_decl.name {
+                    // large spans that encompas the whole expression. We also
+                    // don't treat variable declarations as placeholders if they
+                    // originate from macros.
+                    if code == matched_var_decl.name
+                        && !self
+                            .tcx
+                            .hir()
+                            .span(matched_var_decl.code_hir_id)
+                            .from_expansion()
+                    {
                         // Record the mapping so that we can replace references
                         // to the variable as well.
                         self.substitute_hir_ids
