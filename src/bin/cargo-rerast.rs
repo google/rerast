@@ -49,12 +49,9 @@ mod var_names {
 
 const RERAST_JSON_MARKER: &str = "RERAST_JSON_MARKER: ";
 
-// Queries cargo to find the name of the current crate, then runs cargo clean to
-// clean up artifacts for that package (but not dependencies). This is necessary
-// in order to ensure that all the files in the current crate actually get built
-// when we run cargo check. Hopefully eventually there'll be a nicer way to
-// integrate with cargo such that we won't need to do this.
-fn clean_local_targets() -> Result<(), Error> {
+/// Queries cargo to find the name of the current crate,
+/// NOTE: this is not cached, so calling it multiple times will run `cargo` again.
+fn metadata() -> Result<JsonValue, Error> {
     let output = std::process::Command::new("cargo")
         .args(vec!["metadata", "--no-deps", "--format-version=1"])
         .stdout(std::process::Stdio::piped())
@@ -69,7 +66,16 @@ fn clean_local_targets() -> Result<(), Error> {
         Ok(v) => v,
         Err(e) => bail!("Error parsing metadata JSON: {:?}", e),
     };
-    for package in parsed["packages"].members() {
+    Ok(parsed)
+}
+
+// Queries cargo to find the name of the current crate, then runs cargo clean to
+// clean up artifacts for that package (but not dependencies). This is necessary
+// in order to ensure that all the files in the current crate actually get built
+// when we run cargo check. Hopefully eventually there'll be a nicer way to
+// integrate with cargo such that we won't need to do this.
+fn clean_local_targets() -> Result<(), Error> {
+    for package in metadata()?["packages"].members() {
         if let Some(name) = package["name"].as_str() {
             // TODO: Remove once #10 is fixed.
             if std::env::var("RERAST_FULL_CARGO_CLEAN") == Ok("1".to_string()) {
@@ -311,6 +317,11 @@ fn cargo_rerast() -> Result<(), Error> {
     }
     if let Some(crate_root) = matches.value_of("crate_root") {
         std::env::set_current_dir(crate_root)?;
+    } else {
+        match &metadata()?["workspace_root"] {
+            JsonValue::String(s) => std::env::set_current_dir(s)?,
+            _ => panic!("unrecognized JSON format for `cargo metadata`"),
+        }
     }
     let mut maybe_compiler_invocation_infos = None;
     let rules = if let Some(replacement) = matches.value_of("replace_with") {
