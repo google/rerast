@@ -180,7 +180,6 @@ fn code_is_single_tree(code: &str) -> bool {
 
     let session = ParseSess::new(
         FilePathMapping::empty(),
-        syntax_expand::config::process_configure_mod,
     );
     let ts = rustc_parse::parse_stream_from_source_str(
         syntax_pos::FileName::anon_source_code(code),

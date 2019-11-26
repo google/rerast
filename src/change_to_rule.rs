@@ -153,7 +153,6 @@ where
                 .unwrap();
             let session = ParseSess::new(
                 FilePathMapping::empty(),
-                syntax_expand::config::process_configure_mod,
             );
             let stream = rustc_parse::parse_stream_from_source_str(
                 syntax_pos::FileName::anon_source_code(&snippet),
@@ -479,7 +478,6 @@ impl<'tcx, 'placeholders> PlaceholderMatcher<'tcx, 'placeholders> {
                 for other in matching_others {
                     let session = ParseSess::new(
                         FilePathMapping::empty(),
-                        syntax_expand::config::process_configure_mod,
                     );
                     let stream = rustc_parse::parse_stream_from_source_str(
                         syntax_pos::FileName::Custom("left".to_owned()),
