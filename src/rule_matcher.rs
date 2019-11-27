@@ -512,9 +512,10 @@ impl Matchable for hir::Expr {
             (&ExprKind::Unary(p_op, ref p_expr), &ExprKind::Unary(c_op, ref c_expr)) => {
                 p_op == c_op && p_expr.attempt_match(state, c_expr)
             }
-            (&ExprKind::AddrOf(p_mut, ref p_expr), &ExprKind::AddrOf(c_mut, ref c_expr)) => {
-                p_mut == c_mut && p_expr.attempt_match(state, c_expr)
-            }
+            (
+                &ExprKind::AddrOf(p_kind, p_mut, ref p_expr),
+                &ExprKind::AddrOf(c_kind, c_mut, ref c_expr),
+            ) => p_kind == c_kind && p_mut == c_mut && p_expr.attempt_match(state, c_expr),
             (&ExprKind::Lit(ref p_lit), &ExprKind::Lit(ref c_lit)) => {
                 p_lit.node == c_lit.node || {
                     if let Some((p_span, c_span)) = get_original_spans(self.span, code.span) {

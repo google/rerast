@@ -246,7 +246,7 @@ impl StartMatch for hir::Expr {
     fn extract_root(block: &hir::Block) -> Result<&Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
             if let hir::StmtKind::Semi(ref addr_expr) = block.stmts[0].kind {
-                if let hir::ExprKind::AddrOf(_, ref expr) = addr_expr.kind {
+                if let hir::ExprKind::AddrOf(_, _, ref expr) = addr_expr.kind {
                     return Ok(&**expr);
                 }
             }
