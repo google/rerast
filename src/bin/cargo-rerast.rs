@@ -317,11 +317,8 @@ fn cargo_rerast() -> Result<(), Error> {
     }
     if let Some(crate_root) = matches.value_of("crate_root") {
         std::env::set_current_dir(crate_root)?;
-    } else {
-        match &metadata()?["workspace_root"] {
-            JsonValue::String(s) => std::env::set_current_dir(s)?,
-            _ => panic!("unrecognized JSON format for `cargo metadata`"),
-        }
+    } else if let JsonValue::String(s) = &metadata()?["workspace_root"] {
+        std::env::set_current_dir(s)?
     }
     let mut maybe_compiler_invocation_infos = None;
     let rules = if let Some(replacement) = matches.value_of("replace_with") {
