@@ -320,9 +320,15 @@ struct RerastCompilerCallbacks {
     // returned CompileController.
     output: Result<RerastOutput, RerastErrors>,
     config: Config,
+    diagnostic_output: errors::DiagnosticOutput,
 }
 
 impl rustc_driver::Callbacks for RerastCompilerCallbacks {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        config.diagnostic_output =
+            rustc::session::DiagnosticOutput::Raw(Box::new(self.diagnostic_output.clone()));
+    }
+
     fn after_analysis(&mut self, compiler: &interface::Compiler) -> rustc_driver::Compilation {
         compiler.session().abort_if_errors();
         compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
@@ -452,8 +458,14 @@ fn run_compiler(
     let mut callbacks = RerastCompilerCallbacks {
         output: Ok(RerastOutput::default()),
         config,
+        diagnostic_output: errors::DiagnosticOutput::new(),
     };
-    invocation_info.run_compiler(&mut callbacks, file_loader)?;
+    if invocation_info
+        .run_compiler(&mut callbacks, file_loader)
+        .is_err()
+    {
+        return Err(callbacks.diagnostic_output.errors());
+    }
     callbacks.output
 }
 

@@ -22,6 +22,7 @@ extern crate rustc_parse;
 extern crate syntax;
 extern crate syntax_pos;
 
+use crate::errors;
 use crate::errors::RerastErrors;
 use crate::file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
 use crate::CompilerInvocationInfo;
@@ -245,9 +246,15 @@ struct FindRulesState {
     changed_span: ChangedSpan,
     result: String,
     changed_side_state: Option<ChangedSideState>,
+    diagnostic_output: errors::DiagnosticOutput,
 }
 
 impl rustc_driver::Callbacks for FindRulesState {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        config.diagnostic_output =
+            rustc::session::DiagnosticOutput::Raw(Box::new(self.diagnostic_output.clone()));
+    }
+
     fn after_analysis(&mut self, compiler: &interface::Compiler) -> rustc_driver::Compilation {
         compiler.session().abort_if_errors();
         compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
@@ -644,6 +651,7 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
         changed_span,
         changed_side_state: None,
         result: String::new(),
+        diagnostic_output: errors::DiagnosticOutput::new(),
     };
 
     let mut args_index = 0;
@@ -657,7 +665,12 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
             .arg(&sysroot)
             .arg("--allow")
             .arg("dead_code");
-        invocation_info.run_compiler(&mut find_rules_state, Some(box file_loader.clone()))?;
+        if invocation_info
+            .run_compiler(&mut find_rules_state, Some(box file_loader.clone()))
+            .is_err()
+        {
+            return Err(find_rules_state.diagnostic_output.errors());
+        }
         if find_rules_state.changed_side_state.is_none() {
             // Span was not found with these compiler args, try the next command line.
             args_index += 1;
@@ -677,7 +690,12 @@ fn determine_rule_with_file_loader<T: FileLoader + Clone + Send + Sync + 'static
             modified_file_name.to_owned(),
             original_file_contents.to_owned(),
         );
-        invocation_info.run_compiler(&mut find_rules_state, Some(original_file_loader))?;
+        if invocation_info
+            .run_compiler(&mut find_rules_state, Some(original_file_loader))
+            .is_err()
+        {
+            return Err(find_rules_state.diagnostic_output.errors());
+        }
 
         if right_side_changed_span == find_rules_state.changed_span {
             // The changed span after examining the right side matched a full expression on the

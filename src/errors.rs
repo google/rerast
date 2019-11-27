@@ -16,6 +16,8 @@ use rustc::ty::TyCtxt;
 use std;
 use std::fmt;
 use std::io;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
 use syntax_pos::{FileLinesResult, Span, SpanLinesError};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -67,6 +69,15 @@ pub struct Line {
 
 pub struct FileLinesError {
     message: String,
+}
+
+impl RerastError {
+    fn with_message<T: Into<String>>(message: T) -> RerastError {
+        RerastError {
+            message: message.into(),
+            file_lines: None,
+        }
+    }
 }
 
 impl FileLines {
@@ -154,10 +165,7 @@ impl RerastErrors {
         RerastErrors(errors)
     }
     pub fn with_message<T: Into<String>>(message: T) -> RerastErrors {
-        RerastErrors(vec![RerastError {
-            message: message.into(),
-            file_lines: None,
-        }])
+        RerastErrors(vec![RerastError::with_message(message)])
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &RerastError> {
@@ -194,8 +202,47 @@ impl From<io::Error> for RerastErrors {
     }
 }
 
-impl From<rustc::util::common::ErrorReported> for RerastErrors {
-    fn from(_err: rustc::util::common::ErrorReported) -> RerastErrors {
-        RerastErrors::with_message("An error occurred, see above for details")
+#[derive(Clone)]
+pub(crate) struct DiagnosticOutput {
+    storage: Arc<Mutex<Vec<u8>>>,
+}
+
+impl Write for DiagnosticOutput {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut storage = self.storage.lock().unwrap();
+        storage.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl DiagnosticOutput {
+    pub(crate) fn new() -> DiagnosticOutput {
+        DiagnosticOutput {
+            storage: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub(crate) fn errors(&self) -> RerastErrors {
+        let storage = self.storage.lock().unwrap();
+        if let Ok(output) = std::str::from_utf8(&storage) {
+            RerastErrors(
+                output
+                    .lines()
+                    .filter_map(|line| {
+                        if let Ok(json) = json::parse(line) {
+                            if let Some(rendered) = json["rendered"].as_str() {
+                                return Some(RerastError::with_message(rendered));
+                            }
+                        }
+                        None
+                    })
+                    .collect(),
+            )
+        } else {
+            RerastErrors::with_message("Compiler emitted invalid UTF8")
+        }
     }
 }
