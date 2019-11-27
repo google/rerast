@@ -151,9 +151,7 @@ where
                 .source_map()
                 .span_to_snippet(expr.span)
                 .unwrap();
-            let session = ParseSess::new(
-                FilePathMapping::empty(),
-            );
+            let session = ParseSess::new(FilePathMapping::empty());
             let stream = rustc_parse::parse_stream_from_source_str(
                 syntax_pos::FileName::anon_source_code(&snippet),
                 snippet,
@@ -476,9 +474,7 @@ impl<'tcx, 'placeholders> PlaceholderMatcher<'tcx, 'placeholders> {
                     uses: Vec::new(),
                 };
                 for other in matching_others {
-                    let session = ParseSess::new(
-                        FilePathMapping::empty(),
-                    );
+                    let session = ParseSess::new(FilePathMapping::empty());
                     let stream = rustc_parse::parse_stream_from_source_str(
                         syntax_pos::FileName::Custom("left".to_owned()),
                         source.clone(),

@@ -178,9 +178,7 @@ fn code_is_single_tree(code: &str) -> bool {
     use syntax::source_map::FilePathMapping;
     use syntax::tokenstream::TokenTree;
 
-    let session = ParseSess::new(
-        FilePathMapping::empty(),
-    );
+    let session = ParseSess::new(FilePathMapping::empty());
     let ts = rustc_parse::parse_stream_from_source_str(
         syntax_pos::FileName::anon_source_code(code),
         code.to_owned(),
