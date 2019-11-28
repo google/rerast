@@ -277,7 +277,8 @@ fn cargo_rerast() -> Result<(), Error> {
                 .args_from_usage(
                     "--rules_file=[FILE] 'Path to a rule file'
                      --use=[USE_STATEMENT]... 'Use statements required by rule'
-                     -p, --placeholders=[PLACEHOLDERS] 'e.g. <T>(o: option<T>)'
+                     -p, --placeholders=[PLACEHOLDERS] 'e.g. <T>(o: option<T>) or just \
+                                                        o: Option<i32>'
                      -s, --search=[CODE] 'Expression to search for'
                      --search_type=[CODE] 'Type to search for'
                      --search_pattern=[CODE] 'Pattern to search for'
@@ -324,7 +325,10 @@ fn cargo_rerast() -> Result<(), Error> {
     let rules = if let Some(replacement) = matches.value_of("replace_with") {
         let (replace_kind, search) = get_replacement_kind_and_arg(matches)?;
         let mut placeholders = matches.value_of("placeholders").unwrap_or("").to_owned();
-        if !placeholders.contains('(') {
+        // --placholders can be either just what's inside the parenthesis, or if
+        // generics are needed, then "<...>(...)". For consitency, we also allow
+        // the form "(...)" even though it could be written without parenthesis.
+        if !(placeholders.starts_with('<') || placeholders.starts_with("(")) {
             placeholders = "(".to_owned() + &placeholders + ")";
         }
         let mut rules = String::new();
