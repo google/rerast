@@ -255,9 +255,13 @@ impl rustc_driver::Callbacks for FindRulesState {
             rustc::session::DiagnosticOutput::Raw(Box::new(self.diagnostic_output.clone()));
     }
 
-    fn after_analysis(&mut self, compiler: &interface::Compiler) -> rustc_driver::Compilation {
+    fn after_analysis<'tcx>(
+        &mut self,
+        compiler: &interface::Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
         compiler.session().abort_if_errors();
-        compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
+        queries.global_ctxt().unwrap().peek_mut().enter(|tcx| {
             let source_map = tcx.sess.source_map();
             let maybe_filemap = source_map.get_source_file(&syntax_pos::FileName::Real(
                 PathBuf::from(&self.modified_file_name),
