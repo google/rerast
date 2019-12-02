@@ -6,23 +6,25 @@ more examples, please feel free to send pull requests.
 
 ```rust
 fn rule1<T,E,X: From<E>>(r: Result<T,E>) -> Result<T,X> {
-    replace!(try!(r) => r?);
+    replace!(r#try!(r) => r?);
     unreachable!()
 }
 ```
 This will change:
 ```rust
-fn get_file_contents(filename: &Path) -> io::Result<String> {
+pub fn get_file_contents(filename: &std::path::Path) -> std::io::Result<String> {
     let mut result = String::new();
-    try!(try!(File::open(filename)).read_to_string(&mut result));
+    use std::io::Read;
+    try!(try!(std::fs::File::open(filename)).read_to_string(&mut result));
     Ok(result)
 }
 ```
 Into this:
 ```rust
-fn get_file_contents(filename: &Path) -> io::Result<String> {
+pub fn get_file_contents(filename: &std::path::Path) -> std::io::Result<String> {
     let mut result = String::new();
-    File::open(filename)?.read_to_string(&mut result)?;
+    use std::io::Read;
+    std::fs::File::open(filename)?.read_to_string(&mut result)?;
     Ok(result)
 }
 ```

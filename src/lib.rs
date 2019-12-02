@@ -1336,6 +1336,22 @@ mod tests {
             .expect("fn f1() -> Result<i32, i32> {foo()?; Ok(1)}");
     }
 
+    #[test]
+    fn replace_try_2018() {
+        TestBuilder::new()
+            .edition("2018")
+            .common("pub fn foo() -> Result<i32, i32> {Ok(42)}")
+            .rule(
+                "use std::fmt::Debug; \
+                 fn bar<T, E: Debug>(r: Result<T, E>) -> Result<T, E> {\
+                     replace!(r#try!(r) => r?);
+                     unreachable!();
+                 }",
+            )
+            .input("fn f1() -> Result<i32, i32> {r#try!(foo()); Ok(1)}")
+            .expect("fn f1() -> Result<i32, i32> {foo()?; Ok(1)}");
+    }
+
     // Check that when a placeholder matches an expression that is the result of a macro expansion,
     // we correctly take the call-site of that macro.
     #[test]
