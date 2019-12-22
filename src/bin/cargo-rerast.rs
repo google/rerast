@@ -316,6 +316,10 @@ fn cargo_rerast() -> Result<(), Error> {
         Some(v) => bail!("Invalid value for --color: {}", v),
         _ => {}
     }
+    // The rules files is relative to the original working directory (or
+    // absolute), so we need to remember where that is before changing
+    // the current directory.
+    let here = std::env::current_dir()?;
     if let Some(crate_root) = matches.value_of("crate_root") {
         std::env::set_current_dir(crate_root)?;
     } else if let Some(s) = &metadata()?["workspace_root"].as_str() {
@@ -362,7 +366,7 @@ fn cargo_rerast() -> Result<(), Error> {
     {
         bail!("Searching without --replace_with is not yet implemented");
     } else if let Some(rules_file) = matches.value_of("rules_file") {
-        read_file_as_string(Path::new(rules_file))?
+        read_file_as_string(&here.join(rules_file))?
     } else {
         bail!("Must specify either --rules_file or both of --search and --replacement");
     };
