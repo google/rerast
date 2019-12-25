@@ -109,7 +109,7 @@ impl<'tcx> RuleFinder<'tcx> {
         let mut placeholder_ids = Vec::new();
         for body_id in &self.body_ids {
             let body = self.tcx.hir().body(*body_id);
-            for param in &body.params {
+            for param in body.params {
                 placeholder_ids.push(param.pat.hir_id);
             }
             // Allow any variable declarations at the start or the rule block to

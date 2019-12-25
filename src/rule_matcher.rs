@@ -244,7 +244,7 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
                 // We want to ensure that visit_expr is not called for the root expression of our
                 // body (the block), since we don't want to replace it. But we still want to visit
                 // the body arguments, so we do so explicitly.
-                for param in &body.params {
+                for param in body.params {
                     self.visit_id(param.hir_id);
                     self.visit_pat(&param.pat);
                 }
@@ -580,9 +580,10 @@ impl Matchable for hir::Expr {
                 &ExprKind::Field(ref p_expr, ref p_name),
                 &ExprKind::Field(ref c_expr, ref c_name),
             ) => p_expr.attempt_match(state, c_expr) && p_name.attempt_match(state, c_name),
-            (&ExprKind::Assign(ref p_lhs, ref p_rhs), &ExprKind::Assign(ref c_lhs, ref c_rhs)) => {
-                p_lhs.attempt_match(state, c_lhs) && p_rhs.attempt_match(state, c_rhs)
-            }
+            (
+                &ExprKind::Assign(ref p_lhs, ref p_rhs, _),
+                &ExprKind::Assign(ref c_lhs, ref c_rhs, _),
+            ) => p_lhs.attempt_match(state, c_lhs) && p_rhs.attempt_match(state, c_rhs),
             (
                 &ExprKind::AssignOp(ref p_op, ref p_lhs, ref p_rhs),
                 &ExprKind::AssignOp(ref c_op, ref c_lhs, ref c_rhs),
@@ -651,7 +652,7 @@ impl Matchable for hir::Expr {
     }
 }
 
-impl Matchable for hir::Body {
+impl Matchable for hir::Body<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1084,7 +1085,7 @@ impl Matchable for hir::Local {
     }
 }
 
-impl Matchable for hir::Item {
+impl Matchable for hir::Item<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1103,7 +1104,7 @@ impl Matchable for hir::Item {
     }
 }
 
-impl Matchable for hir::ItemKind {
+impl Matchable for hir::ItemKind<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
