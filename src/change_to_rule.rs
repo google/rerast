@@ -573,7 +573,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for ReferencedPathsFinder<'tcx> {
 
 enum Node<'tcx> {
     NotFound,
-    Expr(&'tcx hir::Expr, hir::BodyId, &'tcx hir::Item),
+    Expr(&'tcx hir::Expr, hir::BodyId, &'tcx hir::Item<'tcx>),
 }
 
 struct RuleFinder<'tcx> {
@@ -581,7 +581,7 @@ struct RuleFinder<'tcx> {
     changed_span: Span,
     candidate: Node<'tcx>,
     body_id: Option<hir::BodyId>,
-    current_item: Option<&'tcx hir::Item>,
+    current_item: Option<&'tcx hir::Item<'tcx>>,
 }
 
 impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
