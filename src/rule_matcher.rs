@@ -46,7 +46,7 @@ pub(crate) struct RuleMatcher<'r, 'tcx: 'r> {
     rules: &'r Rules<'tcx>,
     matches: Matches<'r, 'tcx>,
     rule_mod_symbol: Symbol,
-    parent_expr: Option<&'tcx hir::Expr>,
+    parent_expr: Option<&'tcx hir::Expr<'tcx>>,
     body_id: Option<hir::BodyId>,
     rerast_definitions: RerastDefinitions<'tcx>,
     config: Config,
@@ -76,7 +76,7 @@ impl<'r, 'tcx> RuleMatcher<'r, 'tcx> {
         matcher.matches
     }
 
-    fn should_debug_node<T: StartMatch + 'tcx>(&self, node: &'tcx T) -> bool {
+    fn should_debug_node<T: StartMatch<'tcx> + 'tcx>(&self, node: &'tcx T) -> bool {
         if self.config.debug_snippet.is_empty() {
             return false;
         }
@@ -93,7 +93,7 @@ impl<'r, 'tcx> RuleMatcher<'r, 'tcx> {
             .unwrap_or(false)
     }
 
-    fn get_first_match<T: StartMatch + 'tcx>(
+    fn get_first_match<T: StartMatch<'tcx> + 'tcx>(
         &mut self,
         node: &'tcx T,
         parent_node: Option<&'tcx T>,
@@ -116,7 +116,7 @@ impl<'r, 'tcx> RuleMatcher<'r, 'tcx> {
         None
     }
 
-    fn get_match<T: StartMatch + 'tcx>(
+    fn get_match<T: StartMatch<'tcx> + 'tcx>(
         &mut self,
         node: &'tcx T,
         parent_node: Option<&'tcx T>,
@@ -176,7 +176,7 @@ impl<'r, 'tcx> RuleMatcher<'r, 'tcx> {
 
     // Called after we get a match. Looks for more matches to this and other rules within the
     // experssions/patterns etc bound to the placeholders of that match.
-    fn find_matches_within_placeholders<T: StartMatch + 'tcx>(
+    fn find_matches_within_placeholders<T: StartMatch<'tcx> + 'tcx>(
         &mut self,
         m: &mut Match<'r, 'tcx, T>,
     ) {
@@ -411,6 +411,30 @@ pub(crate) trait Matchable: Debug {
     ) -> bool;
 }
 
+fn attempt_match_option<'r, 'a, 'tcx, T: Matchable>(
+    state: &mut MatchState<'r, 'a, 'tcx>,
+    pattern: Option<&T>,
+    code: Option<&'tcx T>,
+) -> bool {
+    match (pattern, code) {
+        (None, None) => true,
+        (None, Some(_)) | (Some(_), None) => false,
+        (Some(p), Some(c)) => p.attempt_match(state, c),
+    }
+}
+
+fn attempt_match_all<'r, 'a, 'tcx, T: Matchable>(
+    state: &mut MatchState<'r, 'a, 'tcx>,
+    pattern: &[&T],
+    code: &[&'tcx T],
+) -> bool {
+    pattern.len() == code.len()
+        && pattern
+            .iter()
+            .zip(code.iter())
+            .all(|(p, c)| p.attempt_match(state, c))
+}
+
 impl<T: Matchable> Matchable for Option<T> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
@@ -469,7 +493,7 @@ impl<T: Matchable> Matchable for Spanned<T> {
     }
 }
 
-impl Matchable for hir::Expr {
+impl Matchable for hir::Expr<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -559,7 +583,7 @@ impl Matchable for hir::Expr {
             ) => {
                 p_path.attempt_match(state, c_path)
                     && p_fields.attempt_match(state, c_fields)
-                    && p_expr.attempt_match(state, c_expr)
+                    && attempt_match_option(state, *p_expr, *c_expr)
             }
             (
                 &ExprKind::Block(ref p_block, ref p_label),
@@ -595,7 +619,10 @@ impl Matchable for hir::Expr {
             (
                 &ExprKind::Break(ref p_label, ref p_expr),
                 &ExprKind::Break(ref c_label, ref c_expr),
-            ) => p_label.attempt_match(state, c_label) && p_expr.attempt_match(state, c_expr),
+            ) => {
+                p_label.attempt_match(state, c_label)
+                    && attempt_match_option(state, *p_expr, *c_expr)
+            }
             (&ExprKind::Continue(ref p_label), &ExprKind::Continue(ref c_label)) => {
                 p_label.attempt_match(state, c_label)
             }
@@ -608,7 +635,7 @@ impl Matchable for hir::Expr {
                     && p_gen == c_gen
             }
             (&ExprKind::Ret(ref p_expr), &ExprKind::Ret(ref c_expr)) => {
-                p_expr.attempt_match(state, c_expr)
+                attempt_match_option(state, *p_expr, *c_expr)
             }
             (&ExprKind::Box(ref p_expr), &ExprKind::Box(ref c_expr)) => {
                 p_expr.attempt_match(state, c_expr)
@@ -663,7 +690,7 @@ impl Matchable for hir::Body<'_> {
     }
 }
 
-impl Matchable for hir::Param {
+impl Matchable for hir::Param<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -805,7 +832,7 @@ impl Matchable for hir::GenericBound {
     }
 }
 
-impl Matchable for hir::Arm {
+impl Matchable for hir::Arm<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -820,7 +847,7 @@ impl Matchable for hir::Arm {
     }
 }
 
-impl Matchable for hir::Guard {
+impl Matchable for hir::Guard<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -834,7 +861,7 @@ impl Matchable for hir::Guard {
     }
 }
 
-impl Matchable for hir::Pat {
+impl Matchable for hir::Pat<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -871,7 +898,7 @@ impl Matchable for hir::Pat {
                 &Struct(ref p_qpath, ref p_pats, p_dotdot),
                 &Struct(ref c_qpath, ref c_pats, c_dotdot),
             ) => {
-                fn sorted_by_name(pats: &hir::HirVec<hir::FieldPat>) -> Vec<&hir::FieldPat> {
+                fn sorted_by_name<'a>(pats: &'a [hir::FieldPat<'a>]) -> Vec<&'a hir::FieldPat<'a>> {
                     let mut result: Vec<_> = pats.iter().collect();
                     result.sort_by_key(|pat| pat.ident.name);
                     result
@@ -890,12 +917,12 @@ impl Matchable for hir::Pat {
                 &TupleStruct(ref c_qpath, ref c_pats, ref c_dd_pos),
             ) => {
                 p_qpath.attempt_match(state, c_qpath)
-                    && p_pats.attempt_match(state, c_pats)
+                    && attempt_match_all(state, p_pats, c_pats)
                     && p_dd_pos.attempt_match(state, c_dd_pos)
             }
             (&Box(ref p_pat), &Box(ref c_pat)) => p_pat.attempt_match(state, c_pat),
             (&Tuple(ref p_patterns, ref p_dd_pos), &Tuple(ref c_patterns, ref c_dd_pos)) => {
-                p_patterns.attempt_match(state, c_patterns) && p_dd_pos == c_dd_pos
+                attempt_match_all(state, p_patterns, c_patterns) && p_dd_pos == c_dd_pos
             }
             (&Ref(ref p_pat, ref p_mut), &Ref(ref c_pat, ref c_mut)) => {
                 p_pat.attempt_match(state, c_pat) && p_mut == c_mut
@@ -904,9 +931,9 @@ impl Matchable for hir::Pat {
                 &Slice(ref p_pats_a, ref p_op_pat, ref p_pats_b),
                 &Slice(ref c_pats_a, ref c_op_pat, ref c_pats_b),
             ) => {
-                p_pats_a.attempt_match(state, c_pats_a)
-                    && p_op_pat.attempt_match(state, c_op_pat)
-                    && p_pats_b.attempt_match(state, c_pats_b)
+                attempt_match_all(state, p_pats_a, c_pats_a)
+                    && attempt_match_option(state, *p_op_pat, *c_op_pat)
+                    && attempt_match_all(state, p_pats_b, c_pats_b)
             }
             (&Lit(ref p_expr), &Lit(ref c_expr)) => p_expr.attempt_match(state, c_expr),
             (
@@ -923,7 +950,7 @@ impl Matchable for hir::Pat {
     }
 }
 
-impl Matchable for hir::Field {
+impl Matchable for hir::Field<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -933,7 +960,7 @@ impl Matchable for hir::Field {
     }
 }
 
-impl Matchable for hir::FieldPat {
+impl Matchable for hir::FieldPat<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -979,7 +1006,7 @@ impl Matchable for hir::Destination {
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
-        self.label.attempt_match(state, &code.label)
+        attempt_match_option(state, self.label.as_ref(), code.label.as_ref())
     }
 }
 
@@ -1052,7 +1079,7 @@ impl Matchable for hir::PathSegment {
     }
 }
 
-impl Matchable for hir::Stmt {
+impl Matchable for hir::Stmt<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1072,15 +1099,15 @@ impl Matchable for hir::Stmt {
     }
 }
 
-impl Matchable for hir::Local {
+impl Matchable for hir::Local<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
         self.pat.attempt_match(state, &code.pat)
-            && self.ty.attempt_match(state, &code.ty)
-            && self.init.attempt_match(state, &code.init)
+            && attempt_match_option(state, self.ty, code.ty)
+            && attempt_match_option(state, self.init, code.init)
             && self.attrs.attempt_match(state, &code.attrs)
     }
 }
@@ -1182,7 +1209,7 @@ impl Matchable for ast::Attribute {
     }
 }
 
-impl Matchable for hir::Block {
+impl Matchable for hir::Block<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1193,14 +1220,14 @@ impl Matchable for hir::Block {
         }
         // The trailing expression in a block, if present, is never consumed by a placeholder since
         // it's not a statement, so match it separately.
-        if !self.expr.attempt_match(state, &code.expr) {
+        if !attempt_match_option(state, self.expr, code.expr) {
             return false;
         }
         true
     }
 }
 
-impl Matchable for Vec<hir::Stmt> {
+impl Matchable for Vec<hir::Stmt<'_>> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1283,8 +1310,8 @@ impl Matchable for hir::TypeBinding {
 
 #[derive(Debug)]
 pub(crate) struct Matches<'r, 'tcx: 'r> {
-    expr_matches: Vec<Match<'r, 'tcx, hir::Expr>>,
-    pattern_matches: Vec<Match<'r, 'tcx, hir::Pat>>,
+    expr_matches: Vec<Match<'r, 'tcx, hir::Expr<'tcx>>>,
+    pattern_matches: Vec<Match<'r, 'tcx, hir::Pat<'tcx>>>,
     type_matches: Vec<Match<'r, 'tcx, hir::Ty>>,
     trait_ref_matches: Vec<Match<'r, 'tcx, hir::TraitRef>>,
 }
@@ -1301,7 +1328,7 @@ impl<'r, 'tcx> Matches<'r, 'tcx> {
 }
 
 #[derive(Debug)]
-struct Match<'r, 'tcx: 'r, T: StartMatch> {
+struct Match<'r, 'tcx: 'r, T: StartMatch<'tcx>> {
     rule: &'r Rule<'tcx, T>,
     node: &'tcx T,
     // Parent of the patched expression if the parent is also an expression. Used to determine if we
@@ -1316,7 +1343,7 @@ struct Match<'r, 'tcx: 'r, T: StartMatch> {
     original_span: Span,
 }
 
-impl<'r, 'a, 'tcx, T: StartMatch> Match<'r, 'tcx, T> {
+impl<'r, 'a, 'tcx, T: StartMatch<'tcx>> Match<'r, 'tcx, T> {
     fn get_replacement_source(&self, tcx: TyCtxt<'tcx>) -> String {
         let replacement = self.rule.replace;
         let mut replacement_visitor = ReplacementVisitor {
@@ -1369,9 +1396,9 @@ impl<'r, 'a, 'tcx> MatchPlaceholders<'r, 'tcx> {
 
 #[derive(Debug, Copy, Clone)]
 enum PlaceholderContents<'tcx> {
-    Expr(&'tcx hir::Expr),
-    Statements(&'tcx [hir::Stmt]),
-    Pattern(&'tcx hir::Pat),
+    Expr(&'tcx hir::Expr<'tcx>),
+    Statements(&'tcx [hir::Stmt<'tcx>]),
+    Pattern(&'tcx hir::Pat<'tcx>),
 }
 
 impl<'tcx> PlaceholderContents<'tcx> {
@@ -1532,17 +1559,17 @@ fn all_expansions_equal(rule_span: Span, code_span: Span) -> bool {
 
 // Visits the replacement AST looking for variables that need to be replaced with their bound values
 // from the matched source then recording the spans for said replacement.
-struct ReplacementVisitor<'r, 'tcx, T: StartMatch> {
+struct ReplacementVisitor<'r, 'tcx, T: StartMatch<'tcx>> {
     tcx: TyCtxt<'tcx>,
     result: Vec<CodeSubstitution<Span>>,
     current_match: &'r Match<'r, 'tcx, T>,
-    parent_expr: Option<&'tcx hir::Expr>,
+    parent_expr: Option<&'tcx hir::Expr<'tcx>>,
     // Map from HirIds of variables declared in the replacement pattern to HirIds declared in the
     // code that should replace them.
     substitute_hir_ids: HashMap<HirId, HirId>,
 }
 
-impl<'r, 'tcx, T: StartMatch> ReplacementVisitor<'r, 'tcx, T> {
+impl<'r, 'tcx, T: StartMatch<'tcx>> ReplacementVisitor<'r, 'tcx, T> {
     // Returns a snippet of code for the supplied definition.
     fn hir_id_snippet(&self, hir_id: HirId) -> String {
         let source_map = self.tcx.sess.source_map();
@@ -1588,7 +1615,7 @@ impl<'r, 'tcx, T: StartMatch> ReplacementVisitor<'r, 'tcx, T> {
     }
 }
 
-impl<'r, 'tcx, T: StartMatch> intravisit::Visitor<'tcx> for ReplacementVisitor<'r, 'tcx, T> {
+impl<'r, 'tcx, T: StartMatch<'tcx>> intravisit::Visitor<'tcx> for ReplacementVisitor<'r, 'tcx, T> {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
@@ -1666,7 +1693,7 @@ pub(crate) fn substitions_for_matches<'r, 'a, 'tcx>(
     tcx: TyCtxt<'tcx>,
     matches: &Matches<'r, 'tcx>,
 ) -> Vec<CodeSubstitution<Span>> {
-    fn add_substitions_for_matches<'r, 'a, 'tcx, T: StartMatch>(
+    fn add_substitions_for_matches<'r, 'a, 'tcx, T: StartMatch<'tcx>>(
         tcx: TyCtxt<'tcx>,
         matches: &[Match<'r, 'tcx, T>],
         substitutions: &mut Vec<CodeSubstitution<Span>>,

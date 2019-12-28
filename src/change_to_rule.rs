@@ -64,7 +64,7 @@ impl<T> Hash for PlaceholderCandidate<T> {
 }
 
 struct Placeholder<'tcx> {
-    expr: &'tcx hir::Expr,
+    expr: &'tcx hir::Expr<'tcx>,
     uses: Vec<Span>,
 }
 
@@ -91,7 +91,7 @@ fn hash_token_stream(stream: &TokenStream, hasher: &mut DefaultHasher) {
 
 struct PlaceholderCandidateFinder<'tcx, T, F>
 where
-    F: Fn(&'tcx hir::Expr) -> T,
+    F: Fn(&'tcx hir::Expr<'tcx>) -> T,
 {
     tcx: TyCtxt<'tcx>,
     stack: Vec<PlaceholderCandidate<T>>,
@@ -100,11 +100,11 @@ where
 
 impl<'tcx, T, F> PlaceholderCandidateFinder<'tcx, T, F>
 where
-    F: Fn(&'tcx hir::Expr) -> T,
+    F: Fn(&'tcx hir::Expr<'tcx>) -> T,
 {
     fn find_placeholder_candidates(
         tcx: TyCtxt<'tcx>,
-        node: &'tcx hir::Expr,
+        node: &'tcx hir::Expr<'tcx>,
         data_fn: F,
     ) -> Vec<PlaceholderCandidate<T>> {
         let mut state = PlaceholderCandidateFinder {
@@ -116,10 +116,10 @@ where
         state.stack.pop().unwrap().children
     }
 
-    fn walk_expr_children(&mut self, expr: &'tcx hir::Expr) {
+    fn walk_expr_children(&mut self, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::Call(ref _expr_fn, ref args) = expr.kind {
             // Ignore expr_fn as a candidate, just consider the args.
-            for arg in args {
+            for arg in *args {
                 use rustc::hir::intravisit::Visitor;
                 self.visit_expr(arg);
             }
@@ -131,13 +131,13 @@ where
 
 impl<'tcx, T, F> intravisit::Visitor<'tcx> for PlaceholderCandidateFinder<'tcx, T, F>
 where
-    F: Fn(&'tcx hir::Expr) -> T,
+    F: Fn(&'tcx hir::Expr<'tcx>) -> T,
 {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_expr(&mut self, expr: &'tcx hir::Expr) {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
         self.stack
             .push(PlaceholderCandidate::new((self.data_fn)(expr)));
         self.walk_expr_children(expr);
@@ -324,7 +324,7 @@ impl rustc_driver::Callbacks for FindRulesState {
 fn analyse_original_source<'a, 'tcx: 'a>(
     tcx: TyCtxt<'tcx>,
     changed_side_state: &ChangedSideState,
-    expr: &'tcx hir::Expr,
+    expr: &'tcx hir::Expr<'tcx>,
     changed_span: &ChangedSpan,
     modified_source: String,
     body_id: hir::BodyId,
@@ -573,7 +573,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for ReferencedPathsFinder<'tcx> {
 
 enum Node<'tcx> {
     NotFound,
-    Expr(&'tcx hir::Expr, hir::BodyId, &'tcx hir::Item<'tcx>),
+    Expr(&'tcx hir::Expr<'tcx>, hir::BodyId, &'tcx hir::Item<'tcx>),
 }
 
 struct RuleFinder<'tcx> {

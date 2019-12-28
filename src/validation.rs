@@ -36,7 +36,7 @@ impl<'tcx> ValidatorState<'tcx> {
     }
 }
 
-impl<'tcx, T: StartMatch + 'tcx> Rule<'tcx, T> {
+impl<'tcx, T: StartMatch<'tcx> + 'tcx> Rule<'tcx, T> {
     pub(crate) fn validate<'a>(&self, tcx: TyCtxt<'tcx>) -> Result<(), Vec<ErrorWithSpan>> {
         let rule_body = tcx.hir().body(self.body_id);
 

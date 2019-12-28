@@ -391,7 +391,7 @@ struct DeclaredNamesFinder<'tcx> {
 }
 
 impl<'tcx> DeclaredNamesFinder<'tcx> {
-    fn find<T: StartMatch>(tcx: TyCtxt<'tcx>, node: &'tcx T) -> HashMap<Symbol, HirId> {
+    fn find<T: StartMatch<'tcx>>(tcx: TyCtxt<'tcx>, node: &'tcx T) -> HashMap<Symbol, HirId> {
         let mut finder = DeclaredNamesFinder {
             tcx,
             names: HashMap::new(),
