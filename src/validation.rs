@@ -18,8 +18,8 @@ use crate::rule_finder::StartMatch;
 use crate::rules::Rule;
 use rustc::hir::{self, intravisit, HirId};
 use rustc::ty::TyCtxt;
+use rustc_span::Span;
 use std::collections::HashSet;
-use syntax_pos::Span;
 
 struct ValidatorState<'tcx> {
     tcx: TyCtxt<'tcx>,

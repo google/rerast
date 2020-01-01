@@ -19,8 +19,8 @@ extern crate getopts;
 extern crate rustc;
 extern crate rustc_driver;
 extern crate rustc_parse;
+extern crate rustc_span;
 extern crate syntax;
-extern crate syntax_pos;
 
 use crate::errors;
 use crate::errors::RerastErrors;
@@ -29,6 +29,7 @@ use crate::CompilerInvocationInfo;
 use rustc::hir::{self, intravisit};
 use rustc::ty::{TyCtxt, TyKind};
 use rustc_interface::interface;
+use rustc_span::{BytePos, Pos, Span, SyntaxContext};
 use std::collections::hash_map::{DefaultHasher, HashMap};
 use std::collections::hash_set::HashSet;
 use std::fmt::Write;
@@ -39,7 +40,6 @@ use std::rc::Rc;
 use syntax::sess::ParseSess;
 use syntax::source_map::{FileLoader, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
-use syntax_pos::{BytePos, Pos, Span, SyntaxContext};
 
 struct PlaceholderCandidate<T> {
     hash: u64,
@@ -154,7 +154,7 @@ where
                 .unwrap();
             let session = ParseSess::new(FilePathMapping::empty());
             let stream = rustc_parse::parse_stream_from_source_str(
-                syntax_pos::FileName::anon_source_code(&snippet),
+                rustc_span::FileName::anon_source_code(&snippet),
                 snippet,
                 &session,
                 None,
@@ -183,7 +183,7 @@ fn span_within_span(span: Span, target: Span) -> Span {
 struct RelativeSpan(Range<BytePos>);
 
 impl RelativeSpan {
-    fn new(absolute_span: Span, filemap: &syntax_pos::SourceFile) -> RelativeSpan {
+    fn new(absolute_span: Span, filemap: &rustc_span::SourceFile) -> RelativeSpan {
         let absolute_span = span_within_span(
             absolute_span,
             Span::with_root_ctxt(filemap.start_pos, filemap.end_pos),
@@ -194,7 +194,7 @@ impl RelativeSpan {
         RelativeSpan((absolute_span.lo() - start_pos)..(absolute_span.hi() - start_pos))
     }
 
-    fn absolute(&self, filemap: &syntax_pos::SourceFile) -> Span {
+    fn absolute(&self, filemap: &rustc_span::SourceFile) -> Span {
         let start_pos = filemap.start_pos;
         let result = Span::with_root_ctxt(self.0.start + start_pos, self.0.end + start_pos);
         assert!(result.lo() >= filemap.start_pos);
@@ -219,14 +219,14 @@ impl ChangedSpan {
         }
     }
 
-    fn from_span(span: Span, filemap: &syntax_pos::SourceFile) -> ChangedSpan {
+    fn from_span(span: Span, filemap: &rustc_span::SourceFile) -> ChangedSpan {
         ChangedSpan {
             common_prefix: (span.lo() - filemap.start_pos).to_usize(),
             common_suffix: (filemap.end_pos - span.hi()).to_usize(),
         }
     }
 
-    fn to_span(&self, filemap: &syntax_pos::SourceFile) -> Span {
+    fn to_span(&self, filemap: &rustc_span::SourceFile) -> Span {
         Span::new(
             filemap.start_pos + BytePos::from_usize(self.common_prefix),
             filemap.end_pos - BytePos::from_usize(self.common_suffix),
@@ -263,7 +263,7 @@ impl rustc_driver::Callbacks for FindRulesState {
         compiler.session().abort_if_errors();
         queries.global_ctxt().unwrap().peek_mut().enter(|tcx| {
             let source_map = tcx.sess.source_map();
-            let maybe_filemap = source_map.get_source_file(&syntax_pos::FileName::Real(
+            let maybe_filemap = source_map.get_source_file(&rustc_span::FileName::Real(
                 PathBuf::from(&self.modified_file_name),
             ));
             let filemap = if let Some(f) = maybe_filemap {
@@ -339,7 +339,7 @@ fn analyse_original_source<'a, 'tcx: 'a>(
     let mut candidates =
         PlaceholderCandidateFinder::find_placeholder_candidates(tcx, expr, |child_expr| child_expr);
     let other_filemap = source_map.new_source_file(
-        syntax_pos::FileName::Custom("__other_source".to_owned()),
+        rustc_span::FileName::Custom("__other_source".to_owned()),
         modified_source,
     );
     let replacement_span = changed_span.to_span(&*other_filemap);
@@ -391,7 +391,7 @@ fn build_rule<'a, 'tcx: 'a>(
         if let Some(generics) = item.kind.generics() {
             generics_string = source_map.span_to_snippet(generics.span).unwrap();
             let mut where_predicate_strings = Vec::new();
-            for predicate in &generics.where_clause.predicates {
+            for predicate in generics.where_clause.predicates {
                 let span = match *predicate {
                     hir::WherePredicate::BoundPredicate(ref p) => p.span,
                     hir::WherePredicate::RegionPredicate(ref p) => p.span,
@@ -465,7 +465,7 @@ fn substitute_placeholders(
 
 struct PlaceholderMatcher<'tcx, 'placeholders> {
     tcx: TyCtxt<'tcx>,
-    other_filemap: Rc<syntax_pos::SourceFile>,
+    other_filemap: Rc<rustc_span::SourceFile>,
     other_candidates: HashMap<u64, Vec<&'placeholders PlaceholderCandidate<RelativeSpan>>>,
     placeholders_found: Vec<Placeholder<'tcx>>,
     used_placeholder_spans: Vec<Span>,
@@ -487,7 +487,7 @@ impl<'tcx, 'placeholders> PlaceholderMatcher<'tcx, 'placeholders> {
                 for other in matching_others {
                     let session = ParseSess::new(FilePathMapping::empty());
                     let stream = rustc_parse::parse_stream_from_source_str(
-                        syntax_pos::FileName::Custom("left".to_owned()),
+                        rustc_span::FileName::Custom("left".to_owned()),
                         source.clone(),
                         &session,
                         None,
@@ -495,7 +495,7 @@ impl<'tcx, 'placeholders> PlaceholderMatcher<'tcx, 'placeholders> {
                     let other_span = other.data.absolute(&*self.other_filemap);
                     let other_source = source_map.span_to_snippet(other_span).unwrap();
                     let other_stream = rustc_parse::parse_stream_from_source_str(
-                        syntax_pos::FileName::Custom("right".to_owned()),
+                        rustc_span::FileName::Custom("right".to_owned()),
                         other_source,
                         &session,
                         None,

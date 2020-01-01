@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use rustc::ty::TyCtxt;
+use rustc_span::{FileLinesResult, Span, SpanLinesError};
 use std;
 use std::fmt;
 use std::io;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use syntax_pos::{FileLinesResult, Span, SpanLinesError};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ErrorWithSpan {
@@ -56,7 +56,7 @@ pub struct RerastError {
 }
 
 pub struct FileLines {
-    pub(crate) file_name: syntax_pos::FileName,
+    pub(crate) file_name: rustc_span::FileName,
     pub(crate) lines: Vec<Line>,
 }
 

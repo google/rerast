@@ -23,6 +23,7 @@ use rustc::infer::{self, InferCtxt};
 use rustc::traits::ObligationCause;
 use rustc::ty::subst::Subst;
 use rustc::ty::{self, TyCtxt};
+use rustc_span::{Span, SpanSnippetError, DUMMY_SP};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::mem;
@@ -30,7 +31,6 @@ use syntax;
 use syntax::ast;
 use syntax::source_map::{self, Spanned};
 use syntax::symbol::Symbol;
-use syntax_pos::{Span, SpanSnippetError, DUMMY_SP};
 
 #[macro_export]
 macro_rules! debug {
@@ -700,7 +700,7 @@ impl Matchable for hir::Param<'_> {
     }
 }
 
-impl Matchable for hir::Ty {
+impl Matchable for hir::Ty<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -710,7 +710,7 @@ impl Matchable for hir::Ty {
     }
 }
 
-impl Matchable for hir::TyKind {
+impl Matchable for hir::TyKind<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -740,7 +740,7 @@ impl Matchable for hir::TyKind {
     }
 }
 
-impl Matchable for hir::MutTy {
+impl Matchable for hir::MutTy<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -762,7 +762,7 @@ impl Matchable for hir::Lifetime {
     }
 }
 
-impl Matchable for hir::BareFnTy {
+impl Matchable for hir::BareFnTy<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'tcx>,
@@ -773,7 +773,7 @@ impl Matchable for hir::BareFnTy {
     }
 }
 
-impl Matchable for hir::PolyTraitRef {
+impl Matchable for hir::PolyTraitRef<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -811,7 +811,7 @@ impl Matchable for ast::CrateSugar {
     }
 }
 
-impl Matchable for hir::TraitRef {
+impl Matchable for hir::TraitRef<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'tcx>,
@@ -821,7 +821,7 @@ impl Matchable for hir::TraitRef {
     }
 }
 
-impl Matchable for hir::GenericBound {
+impl Matchable for hir::GenericBound<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1030,7 +1030,7 @@ impl Matchable for ast::Ident {
     }
 }
 
-impl Matchable for hir::QPath {
+impl Matchable for hir::QPath<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1040,8 +1040,8 @@ impl Matchable for hir::QPath {
         // currently for hir::Path below.
         use crate::hir::QPath::*;
         match (self, code) {
-            (&Resolved(ref p_ty, ref p_path), &Resolved(ref c_ty, ref c_path)) => {
-                p_ty.attempt_match(state, c_ty) && p_path.attempt_match(state, c_path)
+            (&Resolved(p_ty, ref p_path), &Resolved(c_ty, ref c_path)) => {
+                attempt_match_option(state, p_ty, c_ty) && p_path.attempt_match(state, c_path)
             }
             (&TypeRelative(ref p_ty, ref p_segment), &TypeRelative(ref c_ty, ref c_segment)) => {
                 p_ty.attempt_match(state, c_ty) && p_segment.attempt_match(state, c_segment)
@@ -1051,7 +1051,7 @@ impl Matchable for hir::QPath {
     }
 }
 
-impl Matchable for hir::Path {
+impl Matchable for hir::Path<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1069,13 +1069,13 @@ impl Matchable for hir::Path {
     }
 }
 
-impl Matchable for hir::PathSegment {
+impl Matchable for hir::PathSegment<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
-        self.ident.name == code.ident.name && self.args.attempt_match(state, &code.args)
+        self.ident.name == code.ident.name && attempt_match_option(state, self.args, code.args)
     }
 }
 
@@ -1175,7 +1175,7 @@ impl Matchable for hir::BodyId {
     }
 }
 
-impl Matchable for hir::Visibility {
+impl Matchable for hir::Visibility<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1266,7 +1266,7 @@ impl Matchable for Vec<hir::Stmt<'_>> {
     }
 }
 
-impl Matchable for hir::GenericArgs {
+impl Matchable for hir::GenericArgs<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1278,7 +1278,7 @@ impl Matchable for hir::GenericArgs {
     }
 }
 
-impl Matchable for hir::GenericArg {
+impl Matchable for hir::GenericArg<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1297,14 +1297,30 @@ impl Matchable for hir::GenericArg {
     }
 }
 
-impl Matchable for hir::TypeBinding {
+impl Matchable for hir::TypeBinding<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
         self.ident.name.attempt_match(state, &code.ident.name)
-            && self.ty().attempt_match(state, &code.ty())
+            && self.kind.attempt_match(state, &code.kind)
+    }
+}
+
+impl Matchable for hir::TypeBindingKind<'_> {
+    fn attempt_match<'r, 'a, 'tcx>(
+        &self,
+        state: &mut MatchState<'r, 'a, 'tcx>,
+        code: &'tcx Self,
+    ) -> bool {
+        match (self, code) {
+            (
+                hir::TypeBindingKind::Equality { ty: p_ty },
+                hir::TypeBindingKind::Equality { ty: c_ty },
+            ) => p_ty.attempt_match(state, c_ty),
+            _ => false,
+        }
     }
 }
 
@@ -1312,8 +1328,8 @@ impl Matchable for hir::TypeBinding {
 pub(crate) struct Matches<'r, 'tcx: 'r> {
     expr_matches: Vec<Match<'r, 'tcx, hir::Expr<'tcx>>>,
     pattern_matches: Vec<Match<'r, 'tcx, hir::Pat<'tcx>>>,
-    type_matches: Vec<Match<'r, 'tcx, hir::Ty>>,
-    trait_ref_matches: Vec<Match<'r, 'tcx, hir::TraitRef>>,
+    type_matches: Vec<Match<'r, 'tcx, hir::Ty<'tcx>>>,
+    trait_ref_matches: Vec<Match<'r, 'tcx, hir::TraitRef<'tcx>>>,
 }
 
 impl<'r, 'tcx> Matches<'r, 'tcx> {

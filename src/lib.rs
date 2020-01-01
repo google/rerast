@@ -79,9 +79,8 @@ extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_interface;
 extern crate rustc_parse;
+extern crate rustc_span;
 extern crate syntax;
-extern crate syntax_expand;
-extern crate syntax_pos;
 
 pub mod change_to_rule;
 pub mod chunked_diff;
@@ -103,6 +102,7 @@ use crate::rules::Rules;
 use rustc::hir::{self, intravisit, HirId};
 use rustc::ty::TyCtxt;
 use rustc_interface::interface;
+use rustc_span::{Span, SyntaxContext};
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -110,7 +110,6 @@ use std::vec::Vec;
 use syntax::source_map::FileLoader;
 use syntax::source_map::{self, SourceMap};
 use syntax::symbol::Symbol;
-use syntax_pos::{Span, SyntaxContext};
 
 #[derive(Debug, Clone, Default)]
 pub struct Config {
@@ -351,7 +350,7 @@ fn find_and_apply_rules<'a, 'tcx>(
         Some(r) => r,
         None => {
             if config.verbose {
-                if let syntax_pos::FileName::Real(filename) =
+                if let rustc_span::FileName::Real(filename) =
                     tcx.sess.source_map().span_to_filename(krate.module.inner)
                 {
                     println!(

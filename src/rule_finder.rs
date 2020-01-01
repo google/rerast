@@ -19,10 +19,10 @@ use crate::rule_matcher::{Matchable, OperatorPrecedence};
 use crate::rules::{Rule, Rules};
 use rustc::hir::{self, intravisit, HirId};
 use rustc::ty::{self, TyCtxt};
+use rustc_span::Span;
 use std::marker;
 use std::vec::Vec;
 use syntax::symbol::Symbol;
-use syntax_pos::Span;
 
 // Finds rules.
 pub(crate) struct RuleFinder<'tcx> {
@@ -267,14 +267,14 @@ impl<'tcx> StartMatch<'tcx> for hir::Expr<'tcx> {
     }
 }
 
-impl<'tcx> StartMatch<'tcx> for hir::Ty {
+impl<'tcx> StartMatch<'tcx> for hir::Ty<'tcx> {
     fn span(&self) -> Span {
         self.span
     }
     fn walk<V: intravisit::Visitor<'tcx>>(visitor: &mut V, node: &'tcx Self) {
         visitor.visit_ty(node);
     }
-    fn extract_root<'a>(block: &'a hir::Block) -> Result<&'a Self, ErrorWithSpan> {
+    fn extract_root(block: &'tcx hir::Block<'tcx>) -> Result<&'tcx Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
             if let hir::StmtKind::Local(ref local) = block.stmts[0].kind {
                 if let Some(ref ref_ty) = local.ty {
@@ -300,14 +300,14 @@ impl<'tcx> StartMatch<'tcx> for hir::Ty {
     }
 }
 
-impl<'tcx> StartMatch<'tcx> for hir::TraitRef {
+impl<'tcx> StartMatch<'tcx> for hir::TraitRef<'tcx> {
     fn span(&self) -> Span {
         self.path.span
     }
     fn walk<V: intravisit::Visitor<'tcx>>(visitor: &mut V, node: &'tcx Self) {
         visitor.visit_trait_ref(node);
     }
-    fn extract_root<'a>(block: &'a hir::Block) -> Result<&'a Self, ErrorWithSpan> {
+    fn extract_root(block: &'tcx hir::Block<'tcx>) -> Result<&'tcx Self, ErrorWithSpan> {
         let ty = <hir::Ty as StartMatch>::extract_root(block)?;
         if let hir::TyKind::TraitObject(ref bounds, _) = ty.kind {
             if bounds.len() == 1 {

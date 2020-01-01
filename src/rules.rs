@@ -38,8 +38,8 @@ pub(crate) struct Rule<'tcx, T: StartMatch<'tcx>> {
 pub(crate) struct Rules<'tcx> {
     pub(crate) expr_rules: Vec<Rule<'tcx, hir::Expr<'tcx>>>,
     pub(crate) pattern_rules: Vec<Rule<'tcx, hir::Pat<'tcx>>>,
-    pub(crate) type_rules: Vec<Rule<'tcx, hir::Ty>>,
-    pub(crate) trait_ref_rules: Vec<Rule<'tcx, hir::TraitRef>>,
+    pub(crate) type_rules: Vec<Rule<'tcx, hir::Ty<'tcx>>>,
+    pub(crate) trait_ref_rules: Vec<Rule<'tcx, hir::TraitRef<'tcx>>>,
 }
 
 impl<'tcx> Rules<'tcx> {

@@ -13,13 +13,13 @@
 // limitations under the License.
 
 use itertools::Itertools;
+use rustc_span::{self, BytePos, Span};
 use std::collections::{hash_map, HashMap};
 use std::fmt::Debug;
 use std::io;
 use std::path::PathBuf;
 use syntax::source_map::FileLoader;
 use syntax::source_map::SourceMap;
-use syntax_pos::{self, BytePos, Span};
 
 /// A span within a file. Also differs from rustc's Span in that it's not interned, which allows us
 /// to make use of it after the compiler has finished running.
@@ -64,12 +64,12 @@ impl<'a> SourceChunk<'a> {
     }
 
     fn get_snippet(&self, lo: BytePos, hi: BytePos) -> &'a str {
-        use syntax_pos::Pos;
+        use rustc_span::Pos;
         &self.source[(lo - self.start_pos).to_usize()..(hi - self.start_pos).to_usize()]
     }
 
     fn to_end_from(&self, from: BytePos) -> &'a str {
-        use syntax_pos::Pos;
+        use rustc_span::Pos;
         &self.source[(from - self.start_pos).to_usize()..]
     }
 }
@@ -180,7 +180,7 @@ fn code_is_single_tree(code: &str) -> bool {
 
     let session = ParseSess::new(FilePathMapping::empty());
     let ts = rustc_parse::parse_stream_from_source_str(
-        syntax_pos::FileName::anon_source_code(code),
+        rustc_span::FileName::anon_source_code(code),
         code.to_owned(),
         &session,
         None,
@@ -223,7 +223,7 @@ impl FileRelativeSubstitutions {
             .into_iter()
             .group_by(|subst| source_map.span_to_filename(subst.span));
         for (filename, file_substitutions) in &substitutions_grouped_by_file {
-            if let syntax_pos::FileName::Real(ref path) = filename {
+            if let rustc_span::FileName::Real(ref path) = filename {
                 let file_relative_for_file = by_file
                     .entry(path.to_path_buf())
                     .or_insert_with(Default::default);
@@ -266,7 +266,7 @@ impl FileRelativeSubstitutions {
             let source = file_loader.read_file(&filename)?;
             let output = apply_substitutions(
                 substitutions,
-                SourceChunk::new(&source, syntax_pos::BytePos(0)),
+                SourceChunk::new(&source, rustc_span::BytePos(0)),
             );
             updated_files.insert(filename.clone(), output);
         }
