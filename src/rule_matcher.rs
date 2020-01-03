@@ -473,16 +473,6 @@ impl<T: Matchable> Matchable for syntax::ptr::P<T> {
     }
 }
 
-impl<T: Matchable> Matchable for hir::ptr::P<T> {
-    fn attempt_match<'r, 'a, 'tcx>(
-        &self,
-        state: &mut MatchState<'r, 'a, 'tcx>,
-        code: &'tcx Self,
-    ) -> bool {
-        (**self).attempt_match(state, &**code)
-    }
-}
-
 impl<T: Matchable> Matchable for Spanned<T> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
