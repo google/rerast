@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use rustc_span::source_map::{FileLoader, RealFileLoader};
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use syntax::source_map::{FileLoader, RealFileLoader};
 
 #[derive(Clone)]
 pub(crate) struct InMemoryFileLoader<T: FileLoader + Send + Sync> {

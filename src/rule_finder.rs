@@ -19,10 +19,10 @@ use crate::rule_matcher::{Matchable, OperatorPrecedence};
 use crate::rules::{Rule, Rules};
 use rustc::hir::{self, intravisit, HirId};
 use rustc::ty::{self, TyCtxt};
+use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use std::marker;
 use std::vec::Vec;
-use syntax::symbol::Symbol;
 
 // Finds rules.
 pub(crate) struct RuleFinder<'tcx> {

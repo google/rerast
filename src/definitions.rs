@@ -14,7 +14,7 @@
 
 use rustc::hir::{self, intravisit};
 use rustc::ty::{self, TyCtxt};
-use syntax::symbol::Symbol;
+use rustc_span::symbol::Symbol;
 
 #[derive(Copy, Clone)]
 pub(crate) struct RerastDefinitions<'tcx> {

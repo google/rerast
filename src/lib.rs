@@ -102,14 +102,14 @@ use crate::rules::Rules;
 use rustc::hir::{self, intravisit, HirId};
 use rustc::ty::TyCtxt;
 use rustc_interface::interface;
+use rustc_span::source_map::FileLoader;
+use rustc_span::source_map::{self, SourceMap};
+use rustc_span::symbol::Symbol;
 use rustc_span::{Span, SyntaxContext};
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
-use syntax::source_map::FileLoader;
-use syntax::source_map::{self, SourceMap};
-use syntax::symbol::Symbol;
 
 #[derive(Debug, Clone, Default)]
 pub struct Config {

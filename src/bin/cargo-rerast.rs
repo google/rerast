@@ -24,19 +24,19 @@ extern crate failure;
 
 use json;
 use rerast;
-extern crate syntax;
+extern crate rustc_span;
 
 use clap::ArgMatches;
 use failure::Error;
 use json::JsonValue;
 use rerast::chunked_diff;
 use rerast::{CompilerInvocationInfo, Config, RerastCompilerDriver, RerastOutput};
+use rustc_span::source_map::RealFileLoader;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::io::Write;
 use std::path::Path;
-use syntax::source_map::RealFileLoader;
 
 // Environment variables that we use to pass data from the outer invocation of cargo-rerast through
 // to the inner invocation which runs within cargo check.

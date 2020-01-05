@@ -14,9 +14,9 @@
 
 use crate::rule_finder::StartMatch;
 use rustc::hir::{self, HirId};
+use rustc_span::symbol::Symbol;
 use std::collections::HashMap;
 use std::vec::Vec;
-use syntax::symbol::Symbol;
 
 #[derive(Debug)]
 pub(crate) struct Rule<'tcx, T: StartMatch<'tcx>> {

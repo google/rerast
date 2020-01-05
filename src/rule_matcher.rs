@@ -23,14 +23,14 @@ use rustc::infer::{self, InferCtxt};
 use rustc::traits::ObligationCause;
 use rustc::ty::subst::Subst;
 use rustc::ty::{self, TyCtxt};
+use rustc_span::source_map::{self, Spanned};
+use rustc_span::symbol::Symbol;
 use rustc_span::{Span, SpanSnippetError, DUMMY_SP};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::mem;
 use syntax;
 use syntax::ast;
-use syntax::source_map::{self, Spanned};
-use syntax::symbol::Symbol;
 
 #[macro_export]
 macro_rules! debug {

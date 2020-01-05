@@ -29,6 +29,7 @@ use crate::CompilerInvocationInfo;
 use rustc::hir::{self, intravisit};
 use rustc::ty::{TyCtxt, TyKind};
 use rustc_interface::interface;
+use rustc_span::source_map::{FileLoader, FilePathMapping, SourceMap};
 use rustc_span::{BytePos, Pos, Span, SyntaxContext};
 use std::collections::hash_map::{DefaultHasher, HashMap};
 use std::collections::hash_set::HashSet;
@@ -38,7 +39,6 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use syntax::sess::ParseSess;
-use syntax::source_map::{FileLoader, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
 
 struct PlaceholderCandidate<T> {
