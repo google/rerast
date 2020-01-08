@@ -18,6 +18,7 @@
 extern crate getopts;
 extern crate rustc;
 extern crate rustc_driver;
+extern crate rustc_hir;
 extern crate rustc_parse;
 extern crate rustc_span;
 extern crate syntax;
@@ -26,7 +27,7 @@ use crate::errors;
 use crate::errors::RerastErrors;
 use crate::file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
 use crate::CompilerInvocationInfo;
-use rustc::hir::{self, intravisit};
+use rustc::hir::intravisit;
 use rustc::ty::{TyCtxt, TyKind};
 use rustc_interface::interface;
 use rustc_span::source_map::{FileLoader, FilePathMapping, SourceMap};
@@ -64,7 +65,7 @@ impl<T> Hash for PlaceholderCandidate<T> {
 }
 
 struct Placeholder<'tcx> {
-    expr: &'tcx hir::Expr<'tcx>,
+    expr: &'tcx rustc_hir::Expr<'tcx>,
     uses: Vec<Span>,
 }
 
@@ -91,7 +92,7 @@ fn hash_token_stream(stream: &TokenStream, hasher: &mut DefaultHasher) {
 
 struct PlaceholderCandidateFinder<'tcx, T, F>
 where
-    F: Fn(&'tcx hir::Expr<'tcx>) -> T,
+    F: Fn(&'tcx rustc_hir::Expr<'tcx>) -> T,
 {
     tcx: TyCtxt<'tcx>,
     stack: Vec<PlaceholderCandidate<T>>,
@@ -100,11 +101,11 @@ where
 
 impl<'tcx, T, F> PlaceholderCandidateFinder<'tcx, T, F>
 where
-    F: Fn(&'tcx hir::Expr<'tcx>) -> T,
+    F: Fn(&'tcx rustc_hir::Expr<'tcx>) -> T,
 {
     fn find_placeholder_candidates(
         tcx: TyCtxt<'tcx>,
-        node: &'tcx hir::Expr<'tcx>,
+        node: &'tcx rustc_hir::Expr<'tcx>,
         data_fn: F,
     ) -> Vec<PlaceholderCandidate<T>> {
         let mut state = PlaceholderCandidateFinder {
@@ -116,8 +117,8 @@ where
         state.stack.pop().unwrap().children
     }
 
-    fn walk_expr_children(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::Call(ref _expr_fn, ref args) = expr.kind {
+    fn walk_expr_children(&mut self, expr: &'tcx rustc_hir::Expr<'tcx>) {
+        if let rustc_hir::ExprKind::Call(ref _expr_fn, ref args) = expr.kind {
             // Ignore expr_fn as a candidate, just consider the args.
             for arg in *args {
                 use rustc::hir::intravisit::Visitor;
@@ -131,13 +132,13 @@ where
 
 impl<'tcx, T, F> intravisit::Visitor<'tcx> for PlaceholderCandidateFinder<'tcx, T, F>
 where
-    F: Fn(&'tcx hir::Expr<'tcx>) -> T,
+    F: Fn(&'tcx rustc_hir::Expr<'tcx>) -> T,
 {
     fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+    fn visit_expr(&mut self, expr: &'tcx rustc_hir::Expr<'tcx>) {
         self.stack
             .push(PlaceholderCandidate::new((self.data_fn)(expr)));
         self.walk_expr_children(expr);
@@ -324,11 +325,11 @@ impl rustc_driver::Callbacks for FindRulesState {
 fn analyse_original_source<'a, 'tcx: 'a>(
     tcx: TyCtxt<'tcx>,
     changed_side_state: &ChangedSideState,
-    expr: &'tcx hir::Expr<'tcx>,
+    expr: &'tcx rustc_hir::Expr<'tcx>,
     changed_span: &ChangedSpan,
     modified_source: String,
-    body_id: hir::BodyId,
-    item: &'tcx hir::Item,
+    body_id: rustc_hir::BodyId,
+    item: &'tcx rustc_hir::Item,
 ) -> String {
     let source_map = tcx.sess.source_map();
     let mut others_by_hash = HashMap::new();
@@ -368,9 +369,9 @@ fn analyse_original_source<'a, 'tcx: 'a>(
 fn build_rule<'a, 'tcx: 'a>(
     tcx: TyCtxt<'tcx>,
     placeholders: &[Placeholder<'tcx>],
-    expr: &'tcx hir::Expr,
-    body_id: hir::BodyId,
-    item: &'tcx hir::Item,
+    expr: &'tcx rustc_hir::Expr,
+    body_id: rustc_hir::BodyId,
+    item: &'tcx rustc_hir::Item,
     right_paths: &HashSet<String>,
     replacement_span: Span,
 ) -> String {
@@ -393,9 +394,9 @@ fn build_rule<'a, 'tcx: 'a>(
             let mut where_predicate_strings = Vec::new();
             for predicate in generics.where_clause.predicates {
                 let span = match *predicate {
-                    hir::WherePredicate::BoundPredicate(ref p) => p.span,
-                    hir::WherePredicate::RegionPredicate(ref p) => p.span,
-                    hir::WherePredicate::EqPredicate(ref p) => p.span,
+                    rustc_hir::WherePredicate::BoundPredicate(ref p) => p.span,
+                    rustc_hir::WherePredicate::RegionPredicate(ref p) => p.span,
+                    rustc_hir::WherePredicate::EqPredicate(ref p) => p.span,
                 };
                 where_predicate_strings.push(source_map.span_to_snippet(span).unwrap());
             }
@@ -472,7 +473,10 @@ struct PlaceholderMatcher<'tcx, 'placeholders> {
 }
 
 impl<'tcx, 'placeholders> PlaceholderMatcher<'tcx, 'placeholders> {
-    fn find_placeholders(&mut self, candidates: &mut [PlaceholderCandidate<&'tcx hir::Expr>]) {
+    fn find_placeholders(
+        &mut self,
+        candidates: &mut [PlaceholderCandidate<&'tcx rustc_hir::Expr>],
+    ) {
         // Sort candidates with longest first so that they take precedence.
         candidates.sort_by_key(|p| p.data.span.lo() - p.data.span.hi());
         for candidate in candidates {
@@ -545,7 +549,7 @@ struct ReferencedPathsFinder<'tcx> {
 }
 
 impl<'tcx> ReferencedPathsFinder<'tcx> {
-    fn paths_in_expr(tcx: TyCtxt<'tcx>, expr: &'tcx hir::Expr) -> HashSet<String> {
+    fn paths_in_expr(tcx: TyCtxt<'tcx>, expr: &'tcx rustc_hir::Expr) -> HashSet<String> {
         let mut finder = ReferencedPathsFinder {
             tcx,
             result: HashSet::new(),
@@ -560,8 +564,8 @@ impl<'tcx> intravisit::Visitor<'tcx> for ReferencedPathsFinder<'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_path(&mut self, path: &'tcx hir::Path, _: hir::HirId) {
-        if let crate::hir::def::Res::Def(_, def_id) = path.res {
+    fn visit_path(&mut self, path: &'tcx rustc_hir::Path, _: rustc_hir::HirId) {
+        if let rustc_hir::def::Res::Def(_, def_id) = path.res {
             let mut qualified_path = String::new();
             for component in self.tcx.def_path(def_id).data {
                 write!(qualified_path, "::{}", component.data.as_symbol()).unwrap();
@@ -573,15 +577,19 @@ impl<'tcx> intravisit::Visitor<'tcx> for ReferencedPathsFinder<'tcx> {
 
 enum Node<'tcx> {
     NotFound,
-    Expr(&'tcx hir::Expr<'tcx>, hir::BodyId, &'tcx hir::Item<'tcx>),
+    Expr(
+        &'tcx rustc_hir::Expr<'tcx>,
+        rustc_hir::BodyId,
+        &'tcx rustc_hir::Item<'tcx>,
+    ),
 }
 
 struct RuleFinder<'tcx> {
     tcx: TyCtxt<'tcx>,
     changed_span: Span,
     candidate: Node<'tcx>,
-    body_id: Option<hir::BodyId>,
-    current_item: Option<&'tcx hir::Item<'tcx>>,
+    body_id: Option<rustc_hir::BodyId>,
+    current_item: Option<&'tcx rustc_hir::Item<'tcx>>,
 }
 
 impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
@@ -589,7 +597,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_item(&mut self, item: &'tcx hir::Item) {
+    fn visit_item(&mut self, item: &'tcx rustc_hir::Item) {
         // TODO: Avoid visiting items that we know don't contain the changed code. Just need to make
         // sure we still visit mod items where the module code is in another file.
         let old_item = self.current_item;
@@ -598,14 +606,14 @@ impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
         self.current_item = old_item;
     }
 
-    fn visit_body(&mut self, body: &'tcx hir::Body) {
+    fn visit_body(&mut self, body: &'tcx rustc_hir::Body) {
         let old_body_id = self.body_id;
         self.body_id = Some(body.id());
         intravisit::walk_body(self, body);
         self.body_id = old_body_id;
     }
 
-    fn visit_expr(&mut self, expr: &'tcx hir::Expr) {
+    fn visit_expr(&mut self, expr: &'tcx rustc_hir::Expr) {
         if expr.span.from_expansion() {
             intravisit::walk_expr(self, expr);
         } else if expr.span.contains(self.changed_span) {

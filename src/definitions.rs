@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use rustc::hir::{self, intravisit};
+use rustc::hir::intravisit;
 use rustc::ty::{self, TyCtxt};
+use rustc_hir;
 use rustc_span::symbol::Symbol;
 
 #[derive(Copy, Clone)]
@@ -42,7 +43,7 @@ impl<'tcx> RerastDefinitionsFinder<'tcx> {
     /// feature is not enabled.
     pub(crate) fn find_definitions(
         tcx: TyCtxt<'tcx>,
-        krate: &'tcx hir::Crate,
+        krate: &'tcx rustc_hir::Crate,
     ) -> Option<RerastDefinitions<'tcx>> {
         let mut finder = RerastDefinitionsFinder {
             tcx,
@@ -63,10 +64,10 @@ impl<'tcx> intravisit::Visitor<'tcx> for RerastDefinitionsFinder<'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_item(&mut self, item: &'tcx hir::Item) {
+    fn visit_item(&mut self, item: &'tcx rustc_hir::Item) {
         if self.inside_rerast_mod {
             intravisit::walk_item(self, item);
-        } else if let hir::ItemKind::Mod(_) = item.kind {
+        } else if let rustc_hir::ItemKind::Mod(_) = item.kind {
             if item.ident.name == self.rerast_mod_symbol {
                 self.inside_rerast_mod = true;
                 intravisit::walk_item(self, item);
@@ -75,7 +76,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for RerastDefinitionsFinder<'tcx> {
         }
     }
 
-    fn visit_body(&mut self, body: &'tcx hir::Body) {
+    fn visit_body(&mut self, body: &'tcx rustc_hir::Body) {
         let fn_id = self.tcx.hir().body_owner_def_id(body.id());
         if self.tcx.item_name(fn_id) == self.rerast_types_symbol {
             let tables = self.tcx.typeck_tables_of(fn_id);

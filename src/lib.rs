@@ -77,6 +77,7 @@ use rerast_macros;
 extern crate rustc;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
+extern crate rustc_hir;
 extern crate rustc_interface;
 extern crate rustc_parse;
 extern crate rustc_span;
@@ -99,8 +100,9 @@ use crate::errors::RerastErrors;
 use crate::file_loader::InMemoryFileLoader;
 use crate::rule_finder::StartMatch;
 use crate::rules::Rules;
-use rustc::hir::{self, intravisit, HirId};
+use rustc::hir::intravisit;
 use rustc::ty::TyCtxt;
+use rustc_hir::HirId;
 use rustc_interface::interface;
 use rustc_span::source_map::FileLoader;
 use rustc_span::source_map::{self, SourceMap};
@@ -223,9 +225,9 @@ const RERAST_INTERNAL: &str = stringify!(
     }
 );
 
-pub(crate) fn hir_id_from_path(q_path: &hir::QPath) -> Option<HirId> {
-    use crate::hir::def::Res;
-    if let hir::QPath::Resolved(None, ref path) = *q_path {
+pub(crate) fn hir_id_from_path(q_path: &rustc_hir::QPath) -> Option<HirId> {
+    use crate::rustc_hir::def::Res;
+    if let rustc_hir::QPath::Resolved(None, ref path) = *q_path {
         match path.res {
             Res::Local(id) => Some(id),
             _ => None,
@@ -278,7 +280,7 @@ impl<'tcx> Replacer<'tcx> {
         }
     }
 
-    fn apply_to_crate(&self, krate: &'tcx hir::Crate) -> FileRelativeSubstitutions {
+    fn apply_to_crate(&self, krate: &'tcx rustc_hir::Crate) -> FileRelativeSubstitutions {
         let codemap = self.tcx.sess.source_map();
 
         let matches = rule_matcher::RuleMatcher::find_matches(
@@ -405,8 +407,8 @@ impl<'tcx> intravisit::Visitor<'tcx> for DeclaredNamesFinder<'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_pat(&mut self, pat: &'tcx hir::Pat) {
-        if let hir::PatKind::Binding(_, hir_id, ref ident, _) = pat.kind {
+    fn visit_pat(&mut self, pat: &'tcx rustc_hir::Pat) {
+        if let rustc_hir::PatKind::Binding(_, hir_id, ref ident, _) = pat.kind {
             if self.names.insert(ident.name, hir_id).is_some() {
                 // TODO: Proper error reporting
                 panic!(

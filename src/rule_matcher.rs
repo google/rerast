@@ -18,11 +18,13 @@ use crate::definitions::RerastDefinitions;
 use crate::rule_finder::StartMatch;
 use crate::rules::{Rule, Rules};
 use crate::Config;
-use rustc::hir::{self, intravisit, HirId};
+use rustc::hir::intravisit;
 use rustc::infer::{self, InferCtxt};
 use rustc::traits::ObligationCause;
 use rustc::ty::subst::Subst;
 use rustc::ty::{self, TyCtxt};
+use rustc_hir;
+use rustc_hir::HirId;
 use rustc_span::source_map::{self, Spanned};
 use rustc_span::symbol::Symbol;
 use rustc_span::{Span, SpanSnippetError, DUMMY_SP};
@@ -46,8 +48,8 @@ pub(crate) struct RuleMatcher<'r, 'tcx: 'r> {
     rules: &'r Rules<'tcx>,
     matches: Matches<'r, 'tcx>,
     rule_mod_symbol: Symbol,
-    parent_expr: Option<&'tcx hir::Expr<'tcx>>,
-    body_id: Option<hir::BodyId>,
+    parent_expr: Option<&'tcx rustc_hir::Expr<'tcx>>,
+    body_id: Option<rustc_hir::BodyId>,
     rerast_definitions: RerastDefinitions<'tcx>,
     config: Config,
     debug_active: bool,
@@ -57,7 +59,7 @@ impl<'r, 'tcx> RuleMatcher<'r, 'tcx> {
     pub(crate) fn find_matches(
         tcx: TyCtxt<'tcx>,
         rerast_definitions: RerastDefinitions<'tcx>,
-        krate: &'tcx hir::Crate,
+        krate: &'tcx rustc_hir::Crate,
         rules: &'r Rules<'tcx>,
         config: Config,
     ) -> Matches<'r, 'tcx> {
@@ -167,7 +169,7 @@ impl<'r, 'tcx> RuleMatcher<'r, 'tcx> {
         })
     }
 
-    fn process_children_of_expression(&mut self, expr: &'tcx hir::Expr) {
+    fn process_children_of_expression(&mut self, expr: &'tcx rustc_hir::Expr) {
         let old_parent = self.parent_expr;
         self.parent_expr = Some(expr);
         intravisit::walk_expr(self, expr);
@@ -218,8 +220,8 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_item(&mut self, item: &'tcx hir::Item) {
-        if let hir::ItemKind::Mod(_) = item.kind {
+    fn visit_item(&mut self, item: &'tcx rustc_hir::Item) {
+        if let rustc_hir::ItemKind::Mod(_) = item.kind {
             // Avoid trying to find matches in the rules file.
             if item.ident.name == self.rule_mod_symbol {
                 return;
@@ -228,7 +230,7 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
         intravisit::walk_item(self, item);
     }
 
-    fn visit_trait_ref(&mut self, trait_ref: &'tcx hir::TraitRef) {
+    fn visit_trait_ref(&mut self, trait_ref: &'tcx rustc_hir::TraitRef) {
         if let Some(m) = self.get_first_match(trait_ref, None, &self.rules.trait_ref_rules) {
             self.matches.trait_ref_matches.push(m);
         } else {
@@ -236,11 +238,11 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
         }
     }
 
-    fn visit_body(&mut self, body: &'tcx hir::Body) {
+    fn visit_body(&mut self, body: &'tcx rustc_hir::Body) {
         let old_body_id = self.body_id;
         self.body_id = Some(body.id());
         match body.value.kind {
-            hir::ExprKind::Block(_, _) => {
+            rustc_hir::ExprKind::Block(_, _) => {
                 // We want to ensure that visit_expr is not called for the root expression of our
                 // body (the block), since we don't want to replace it. But we still want to visit
                 // the body arguments, so we do so explicitly.
@@ -260,7 +262,7 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
         self.body_id = old_body_id;
     }
 
-    fn visit_expr(&mut self, expr: &'tcx hir::Expr) {
+    fn visit_expr(&mut self, expr: &'tcx rustc_hir::Expr) {
         let parent_expr = self.parent_expr;
         if let Some(mut m) = self.get_first_match(expr, parent_expr, &self.rules.expr_rules) {
             self.find_matches_within_placeholders(&mut m);
@@ -273,7 +275,7 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
         }
     }
 
-    fn visit_ty(&mut self, ty: &'tcx hir::Ty) {
+    fn visit_ty(&mut self, ty: &'tcx rustc_hir::Ty) {
         if let Some(m) = self.get_first_match(ty, None, &self.rules.type_rules) {
             self.matches.type_matches.push(m);
             return;
@@ -281,7 +283,7 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
         intravisit::walk_ty(self, ty);
     }
 
-    fn visit_pat(&mut self, pat: &'tcx hir::Pat) {
+    fn visit_pat(&mut self, pat: &'tcx rustc_hir::Pat) {
         if let Some(mut m) = self.get_first_match(pat, None, &self.rules.pattern_rules) {
             self.find_matches_within_placeholders(&mut m);
             self.matches.pattern_matches.push(m);
@@ -294,7 +296,7 @@ impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
 pub(crate) struct MatchState<'r, 'a, 'tcx: 'a> {
     tcx: TyCtxt<'tcx>,
     infcx: InferCtxt<'a, 'tcx>,
-    body_id: Option<hir::BodyId>,
+    body_id: Option<rustc_hir::BodyId>,
     rule_type_tables: &'tcx ty::TypeckTables<'tcx>,
     match_placeholders: MatchPlaceholders<'r, 'tcx>,
     // This map should have all the same keys as the placeholders on match_placeholders. It's here
@@ -310,7 +312,11 @@ pub(crate) struct MatchState<'r, 'a, 'tcx: 'a> {
 }
 
 impl<'r, 'a, 'tcx: 'a> MatchState<'r, 'a, 'tcx> {
-    fn attempt_to_bind_expr(&mut self, qpath: &hir::QPath, expr: &'tcx hir::Expr) -> bool {
+    fn attempt_to_bind_expr(
+        &mut self,
+        qpath: &rustc_hir::QPath,
+        expr: &'tcx rustc_hir::Expr,
+    ) -> bool {
         if let Some(hir_id) = hir_id_from_path(qpath) {
             if let Some(&p_ty) = self.placeholder_types_by_id.get(&hir_id) {
                 let c_ty = self.code_type_tables().expr_ty(expr);
@@ -357,12 +363,12 @@ impl<'r, 'a, 'tcx: 'a> MatchState<'r, 'a, 'tcx> {
     // is called by method_call_id (e.g. foo.bar()).
     fn fn_expr_equals_method_call(
         &self,
-        fn_expr: &hir::Expr,
+        fn_expr: &rustc_hir::Expr,
         fn_type_tables: &ty::TypeckTables<'tcx>,
         method_call_id: HirId,
         method_type_tables: &ty::TypeckTables<'tcx>,
     ) -> bool {
-        if let Some(Ok((hir::def::DefKind::Method, method_id))) =
+        if let Some(Ok((rustc_hir::def::DefKind::Method, method_id))) =
             fn_type_tables.type_dependent_defs().get(fn_expr.hir_id)
         {
             if let Ok((_, method_def_id)) = method_type_tables.type_dependent_defs()[method_call_id]
@@ -375,14 +381,14 @@ impl<'r, 'a, 'tcx: 'a> MatchState<'r, 'a, 'tcx> {
 
     // Checks if the supplied statement is a placeholder for a sequence of statements. e.g. `a();`
     // where `a` is of type rerast::Statements. If it is, returns the HirId of the placeholder.
-    fn opt_statements_placeholder_hir_id(&self, stmt: &hir::Stmt) -> Option<HirId> {
-        if let hir::StmtKind::Semi(ref expr) = stmt.kind {
-            if let hir::ExprKind::Call(ref function, _) = expr.kind {
+    fn opt_statements_placeholder_hir_id(&self, stmt: &rustc_hir::Stmt) -> Option<HirId> {
+        if let rustc_hir::StmtKind::Semi(ref expr) = stmt.kind {
+            if let rustc_hir::ExprKind::Call(ref function, _) = expr.kind {
                 let fn_ty = self.rule_type_tables.expr_ty(function);
                 if !self.can_sub(fn_ty, self.rerast_definitions.statements) {
                     return None;
                 }
-                if let hir::ExprKind::Path(ref path) = function.kind {
+                if let rustc_hir::ExprKind::Path(ref path) = function.kind {
                     if let Some(hir_id) = hir_id_from_path(path) {
                         if self.placeholder_types_by_id.contains_key(&hir_id) {
                             return Some(hir_id);
@@ -483,13 +489,13 @@ impl<T: Matchable> Matchable for Spanned<T> {
     }
 }
 
-impl Matchable for hir::Expr<'_> {
+impl Matchable for rustc_hir::Expr<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
-        use rustc::hir::ExprKind;
+        use rustc_hir::ExprKind;
         let result = match (&self.kind, &code.kind) {
             // TODO: ExprType, ExprInlineAsm (or more likely report that we don't support it).
             (&ExprKind::Call(ref p_fn, ref p_args), &ExprKind::Call(ref c_fn, ref c_args)) => {
@@ -669,7 +675,7 @@ impl Matchable for hir::Expr<'_> {
     }
 }
 
-impl Matchable for hir::Body<'_> {
+impl Matchable for rustc_hir::Body<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -680,7 +686,7 @@ impl Matchable for hir::Body<'_> {
     }
 }
 
-impl Matchable for hir::Param<'_> {
+impl Matchable for rustc_hir::Param<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -690,7 +696,7 @@ impl Matchable for hir::Param<'_> {
     }
 }
 
-impl Matchable for hir::Ty<'_> {
+impl Matchable for rustc_hir::Ty<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -700,13 +706,13 @@ impl Matchable for hir::Ty<'_> {
     }
 }
 
-impl Matchable for hir::TyKind<'_> {
+impl Matchable for rustc_hir::TyKind<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
-        use crate::hir::TyKind;
+        use crate::rustc_hir::TyKind;
         match (self, code) {
             (&TyKind::Slice(ref p), &TyKind::Slice(ref c))
             | (&TyKind::Array(ref p, _), &TyKind::Array(ref c, _)) => p.attempt_match(state, c),
@@ -730,7 +736,7 @@ impl Matchable for hir::TyKind<'_> {
     }
 }
 
-impl Matchable for hir::MutTy<'_> {
+impl Matchable for rustc_hir::MutTy<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -740,7 +746,7 @@ impl Matchable for hir::MutTy<'_> {
     }
 }
 
-impl Matchable for hir::Lifetime {
+impl Matchable for rustc_hir::Lifetime {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'tcx>,
@@ -752,7 +758,7 @@ impl Matchable for hir::Lifetime {
     }
 }
 
-impl Matchable for hir::BareFnTy<'_> {
+impl Matchable for rustc_hir::BareFnTy<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'tcx>,
@@ -763,7 +769,7 @@ impl Matchable for hir::BareFnTy<'_> {
     }
 }
 
-impl Matchable for hir::PolyTraitRef<'_> {
+impl Matchable for rustc_hir::PolyTraitRef<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -773,15 +779,15 @@ impl Matchable for hir::PolyTraitRef<'_> {
     }
 }
 
-impl Matchable for hir::CaptureBy {
+impl Matchable for rustc_hir::CaptureBy {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
         match (self, code) {
-            (hir::CaptureBy::Value, hir::CaptureBy::Value)
-            | (hir::CaptureBy::Ref, hir::CaptureBy::Ref) => true,
+            (rustc_hir::CaptureBy::Value, rustc_hir::CaptureBy::Value)
+            | (rustc_hir::CaptureBy::Ref, rustc_hir::CaptureBy::Ref) => true,
             _ => false,
         }
     }
@@ -801,7 +807,7 @@ impl Matchable for ast::CrateSugar {
     }
 }
 
-impl Matchable for hir::TraitRef<'_> {
+impl Matchable for rustc_hir::TraitRef<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'tcx>,
@@ -811,7 +817,7 @@ impl Matchable for hir::TraitRef<'_> {
     }
 }
 
-impl Matchable for hir::GenericBound<'_> {
+impl Matchable for rustc_hir::GenericBound<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'tcx>,
@@ -822,7 +828,7 @@ impl Matchable for hir::GenericBound<'_> {
     }
 }
 
-impl Matchable for hir::Arm<'_> {
+impl Matchable for rustc_hir::Arm<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -837,27 +843,27 @@ impl Matchable for hir::Arm<'_> {
     }
 }
 
-impl Matchable for hir::Guard<'_> {
+impl Matchable for rustc_hir::Guard<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
         match (self, code) {
-            (hir::Guard::If(ref p_expr), hir::Guard::If(ref c_expr)) => {
+            (rustc_hir::Guard::If(ref p_expr), rustc_hir::Guard::If(ref c_expr)) => {
                 p_expr.attempt_match(state, c_expr)
             }
         }
     }
 }
 
-impl Matchable for hir::Pat<'_> {
+impl Matchable for rustc_hir::Pat<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
-        use crate::hir::PatKind::*;
+        use crate::rustc_hir::PatKind::*;
         match (&self.kind, &code.kind) {
             (&Wild, &Wild) => true,
             (&Binding(p_mode, p_hir_id, ref _p_name, ref p_pat), _) => {
@@ -888,7 +894,9 @@ impl Matchable for hir::Pat<'_> {
                 &Struct(ref p_qpath, ref p_pats, p_dotdot),
                 &Struct(ref c_qpath, ref c_pats, c_dotdot),
             ) => {
-                fn sorted_by_name<'a>(pats: &'a [hir::FieldPat<'a>]) -> Vec<&'a hir::FieldPat<'a>> {
+                fn sorted_by_name<'a>(
+                    pats: &'a [rustc_hir::FieldPat<'a>],
+                ) -> Vec<&'a rustc_hir::FieldPat<'a>> {
                     let mut result: Vec<_> = pats.iter().collect();
                     result.sort_by_key(|pat| pat.ident.name);
                     result
@@ -940,7 +948,7 @@ impl Matchable for hir::Pat<'_> {
     }
 }
 
-impl Matchable for hir::Field<'_> {
+impl Matchable for rustc_hir::Field<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -950,7 +958,7 @@ impl Matchable for hir::Field<'_> {
     }
 }
 
-impl Matchable for hir::FieldPat<'_> {
+impl Matchable for rustc_hir::FieldPat<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -960,7 +968,7 @@ impl Matchable for hir::FieldPat<'_> {
     }
 }
 
-impl Matchable for hir::BinOp {
+impl Matchable for rustc_hir::BinOp {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         _state: &mut MatchState<'r, 'a, 'tcx>,
@@ -990,7 +998,7 @@ impl Matchable for usize {
     }
 }
 
-impl Matchable for hir::Destination {
+impl Matchable for rustc_hir::Destination {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1020,15 +1028,15 @@ impl Matchable for ast::Ident {
     }
 }
 
-impl Matchable for hir::QPath<'_> {
+impl Matchable for rustc_hir::QPath<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
         // TODO: Consider using TypeckTables::qpath_def, then passing the two defs to the match
-        // currently for hir::Path below.
-        use crate::hir::QPath::*;
+        // currently for rustc_hir::Path below.
+        use crate::rustc_hir::QPath::*;
         match (self, code) {
             (&Resolved(p_ty, ref p_path), &Resolved(c_ty, ref c_path)) => {
                 attempt_match_option(state, p_ty, c_ty) && p_path.attempt_match(state, c_path)
@@ -1041,14 +1049,14 @@ impl Matchable for hir::QPath<'_> {
     }
 }
 
-impl Matchable for hir::Path<'_> {
+impl Matchable for rustc_hir::Path<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
         match (self.res, code.res) {
-            (hir::def::Res::Local(p_hir_id), hir::def::Res::Local(c_hir_id)) => state
+            (rustc_hir::def::Res::Local(p_hir_id), rustc_hir::def::Res::Local(c_hir_id)) => state
                 .match_placeholders
                 .matched_variable_decls
                 .get(&p_hir_id)
@@ -1059,7 +1067,7 @@ impl Matchable for hir::Path<'_> {
     }
 }
 
-impl Matchable for hir::PathSegment<'_> {
+impl Matchable for rustc_hir::PathSegment<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1069,13 +1077,13 @@ impl Matchable for hir::PathSegment<'_> {
     }
 }
 
-impl Matchable for hir::Stmt<'_> {
+impl Matchable for rustc_hir::Stmt<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
-        use rustc::hir::StmtKind;
+        use rustc_hir::StmtKind;
         match (&self.kind, &code.kind) {
             (&StmtKind::Expr(ref p), &StmtKind::Expr(ref c))
             | (&StmtKind::Semi(ref p), &StmtKind::Semi(ref c)) => p.attempt_match(state, c),
@@ -1089,7 +1097,7 @@ impl Matchable for hir::Stmt<'_> {
     }
 }
 
-impl Matchable for hir::Local<'_> {
+impl Matchable for rustc_hir::Local<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1102,7 +1110,7 @@ impl Matchable for hir::Local<'_> {
     }
 }
 
-impl Matchable for hir::Item<'_> {
+impl Matchable for rustc_hir::Item<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1121,13 +1129,13 @@ impl Matchable for hir::Item<'_> {
     }
 }
 
-impl Matchable for hir::ItemKind<'_> {
+impl Matchable for rustc_hir::ItemKind<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
-        use crate::hir::ItemKind;
+        use crate::rustc_hir::ItemKind;
         match (self, code) {
             (
                 &ItemKind::Static(ref p_ty, p_mut, ref p_body_id),
@@ -1143,7 +1151,7 @@ impl Matchable for hir::ItemKind<'_> {
     }
 }
 
-impl Matchable for hir::AnonConst {
+impl Matchable for rustc_hir::AnonConst {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1153,7 +1161,7 @@ impl Matchable for hir::AnonConst {
     }
 }
 
-impl Matchable for hir::BodyId {
+impl Matchable for rustc_hir::BodyId {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1165,13 +1173,13 @@ impl Matchable for hir::BodyId {
     }
 }
 
-impl Matchable for hir::Visibility<'_> {
+impl Matchable for rustc_hir::Visibility<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
         code: &'tcx Self,
     ) -> bool {
-        use crate::hir::VisibilityKind::*;
+        use crate::rustc_hir::VisibilityKind::*;
         match (&self.node, &code.node) {
             (
                 Restricted {
@@ -1199,7 +1207,7 @@ impl Matchable for ast::Attribute {
     }
 }
 
-impl Matchable for hir::Block<'_> {
+impl Matchable for rustc_hir::Block<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1217,7 +1225,7 @@ impl Matchable for hir::Block<'_> {
     }
 }
 
-impl Matchable for Vec<hir::Stmt<'_>> {
+impl Matchable for Vec<rustc_hir::Stmt<'_>> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1256,7 +1264,7 @@ impl Matchable for Vec<hir::Stmt<'_>> {
     }
 }
 
-impl Matchable for hir::GenericArgs<'_> {
+impl Matchable for rustc_hir::GenericArgs<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1268,7 +1276,7 @@ impl Matchable for hir::GenericArgs<'_> {
     }
 }
 
-impl Matchable for hir::GenericArg<'_> {
+impl Matchable for rustc_hir::GenericArg<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1276,10 +1284,10 @@ impl Matchable for hir::GenericArg<'_> {
     ) -> bool {
         match (self, code) {
             (
-                hir::GenericArg::Lifetime(ref p_lifetime),
-                hir::GenericArg::Lifetime(ref c_lifetime),
+                rustc_hir::GenericArg::Lifetime(ref p_lifetime),
+                rustc_hir::GenericArg::Lifetime(ref c_lifetime),
             ) => p_lifetime.attempt_match(state, c_lifetime),
-            (hir::GenericArg::Type(ref p_type), hir::GenericArg::Type(ref c_type)) => {
+            (rustc_hir::GenericArg::Type(ref p_type), rustc_hir::GenericArg::Type(ref c_type)) => {
                 p_type.attempt_match(state, c_type)
             }
             _ => false,
@@ -1287,7 +1295,7 @@ impl Matchable for hir::GenericArg<'_> {
     }
 }
 
-impl Matchable for hir::TypeBinding<'_> {
+impl Matchable for rustc_hir::TypeBinding<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1298,7 +1306,7 @@ impl Matchable for hir::TypeBinding<'_> {
     }
 }
 
-impl Matchable for hir::TypeBindingKind<'_> {
+impl Matchable for rustc_hir::TypeBindingKind<'_> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1306,8 +1314,8 @@ impl Matchable for hir::TypeBindingKind<'_> {
     ) -> bool {
         match (self, code) {
             (
-                hir::TypeBindingKind::Equality { ty: p_ty },
-                hir::TypeBindingKind::Equality { ty: c_ty },
+                rustc_hir::TypeBindingKind::Equality { ty: p_ty },
+                rustc_hir::TypeBindingKind::Equality { ty: c_ty },
             ) => p_ty.attempt_match(state, c_ty),
             _ => false,
         }
@@ -1316,10 +1324,10 @@ impl Matchable for hir::TypeBindingKind<'_> {
 
 #[derive(Debug)]
 pub(crate) struct Matches<'r, 'tcx: 'r> {
-    expr_matches: Vec<Match<'r, 'tcx, hir::Expr<'tcx>>>,
-    pattern_matches: Vec<Match<'r, 'tcx, hir::Pat<'tcx>>>,
-    type_matches: Vec<Match<'r, 'tcx, hir::Ty<'tcx>>>,
-    trait_ref_matches: Vec<Match<'r, 'tcx, hir::TraitRef<'tcx>>>,
+    expr_matches: Vec<Match<'r, 'tcx, rustc_hir::Expr<'tcx>>>,
+    pattern_matches: Vec<Match<'r, 'tcx, rustc_hir::Pat<'tcx>>>,
+    type_matches: Vec<Match<'r, 'tcx, rustc_hir::Ty<'tcx>>>,
+    trait_ref_matches: Vec<Match<'r, 'tcx, rustc_hir::TraitRef<'tcx>>>,
 }
 
 impl<'r, 'tcx> Matches<'r, 'tcx> {
@@ -1402,9 +1410,9 @@ impl<'r, 'a, 'tcx> MatchPlaceholders<'r, 'tcx> {
 
 #[derive(Debug, Copy, Clone)]
 enum PlaceholderContents<'tcx> {
-    Expr(&'tcx hir::Expr<'tcx>),
-    Statements(&'tcx [hir::Stmt<'tcx>]),
-    Pattern(&'tcx hir::Pat<'tcx>),
+    Expr(&'tcx rustc_hir::Expr<'tcx>),
+    Statements(&'tcx [rustc_hir::Stmt<'tcx>]),
+    Pattern(&'tcx rustc_hir::Pat<'tcx>),
 }
 
 impl<'tcx> PlaceholderContents<'tcx> {
@@ -1427,7 +1435,7 @@ impl<'tcx> PlaceholderContents<'tcx> {
 
     // Returns whether we need to add parenthesis around this contents of this placeholder when
     // inserted as a child of parent_expr in order to preserve order of operations.
-    fn needs_parenthesis(&self, parent_expr: Option<&hir::Expr>) -> bool {
+    fn needs_parenthesis(&self, parent_expr: Option<&rustc_hir::Expr>) -> bool {
         if let PlaceholderContents::Expr(expr) = *self {
             OperatorPrecedence::needs_parenthesis(parent_expr, expr)
         } else {
@@ -1469,12 +1477,12 @@ pub(crate) enum OperatorPrecedence {
 }
 
 impl OperatorPrecedence {
-    fn from_expr(expr: &hir::Expr) -> Option<OperatorPrecedence> {
-        use rustc::hir::ExprKind;
+    fn from_expr(expr: &rustc_hir::Expr) -> Option<OperatorPrecedence> {
+        use rustc_hir::ExprKind;
         Some(match expr.kind {
             ExprKind::Unary(..) => OperatorPrecedence::Unary,
             ExprKind::Binary(op, ..) => {
-                use rustc::hir::BinOpKind;
+                use rustc_hir::BinOpKind;
                 match op.node {
                     BinOpKind::Add | BinOpKind::Sub => OperatorPrecedence::AddSub,
                     BinOpKind::Mul | BinOpKind::Div | BinOpKind::Rem => {
@@ -1502,8 +1510,8 @@ impl OperatorPrecedence {
     // Returns whether parenthsis are needed around the child expression in order to maintain
     // structure. i.e the child expression has weaker precedence than the parent.
     pub(crate) fn needs_parenthesis(
-        maybe_parent_expr: Option<&hir::Expr>,
-        child_expr: &hir::Expr,
+        maybe_parent_expr: Option<&rustc_hir::Expr>,
+        child_expr: &rustc_hir::Expr,
     ) -> bool {
         if let (Some(parent), Some(child)) = (
             maybe_parent_expr.and_then(OperatorPrecedence::from_expr),
@@ -1569,7 +1577,7 @@ struct ReplacementVisitor<'r, 'tcx, T: StartMatch<'tcx>> {
     tcx: TyCtxt<'tcx>,
     result: Vec<CodeSubstitution<Span>>,
     current_match: &'r Match<'r, 'tcx, T>,
-    parent_expr: Option<&'tcx hir::Expr<'tcx>>,
+    parent_expr: Option<&'tcx rustc_hir::Expr<'tcx>>,
     // Map from HirIds of variables declared in the replacement pattern to HirIds declared in the
     // code that should replace them.
     substitute_hir_ids: HashMap<HirId, HirId>,
@@ -1586,8 +1594,8 @@ impl<'r, 'tcx, T: StartMatch<'tcx>> ReplacementVisitor<'r, 'tcx, T> {
 
     // Check if the supplied expression is a placeholder variable. If it is, replace the supplied
     // span with whatever was bound to the placeholder and return true.
-    fn process_expr(&mut self, expr: &'tcx hir::Expr, placeholder_span: Span) -> bool {
-        if let hir::ExprKind::Path(ref path) = expr.kind {
+    fn process_expr(&mut self, expr: &'tcx rustc_hir::Expr, placeholder_span: Span) -> bool {
+        if let rustc_hir::ExprKind::Path(ref path) = expr.kind {
             if let Some(hir_id) = hir_id_from_path(path) {
                 if let Some(placeholder) = self
                     .current_match
@@ -1626,7 +1634,7 @@ impl<'r, 'tcx, T: StartMatch<'tcx>> intravisit::Visitor<'tcx> for ReplacementVis
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_expr(&mut self, expr: &'tcx hir::Expr) {
+    fn visit_expr(&mut self, expr: &'tcx rustc_hir::Expr) {
         self.process_expr(expr, expr.span);
         let old_parent = self.parent_expr;
         self.parent_expr = Some(expr);
@@ -1634,9 +1642,9 @@ impl<'r, 'tcx, T: StartMatch<'tcx>> intravisit::Visitor<'tcx> for ReplacementVis
         self.parent_expr = old_parent;
     }
 
-    fn visit_stmt(&mut self, stmt: &'tcx hir::Stmt) {
-        if let hir::StmtKind::Semi(ref expr) = stmt.kind {
-            if let hir::ExprKind::Call(ref expr_fn, _) = expr.kind {
+    fn visit_stmt(&mut self, stmt: &'tcx rustc_hir::Stmt) {
+        if let rustc_hir::StmtKind::Semi(ref expr) = stmt.kind {
+            if let rustc_hir::ExprKind::Call(ref expr_fn, _) = expr.kind {
                 if self.process_expr(expr_fn, stmt.span) {
                     return;
                 }
@@ -1645,8 +1653,8 @@ impl<'r, 'tcx, T: StartMatch<'tcx>> intravisit::Visitor<'tcx> for ReplacementVis
         intravisit::walk_stmt(self, stmt);
     }
 
-    fn visit_pat(&mut self, pat: &'tcx hir::Pat) {
-        if let hir::PatKind::Binding(_, hir_id, ref ident, _) = pat.kind {
+    fn visit_pat(&mut self, pat: &'tcx rustc_hir::Pat) {
+        if let rustc_hir::PatKind::Binding(_, hir_id, ref ident, _) = pat.kind {
             if let Some(search_hir_id) = self
                 .current_match
                 .rule

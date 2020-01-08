@@ -16,8 +16,9 @@ use super::hir_id_from_path;
 use crate::errors::ErrorWithSpan;
 use crate::rule_finder::StartMatch;
 use crate::rules::Rule;
-use rustc::hir::{self, intravisit, HirId};
+use rustc::hir::intravisit;
 use rustc::ty::TyCtxt;
+use rustc_hir::{self, HirId};
 use rustc_span::Span;
 use std::collections::HashSet;
 
@@ -69,7 +70,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for SearchValidator<'tcx> {
         intravisit::NestedVisitorMap::All(&self.state.tcx.hir())
     }
 
-    fn visit_qpath(&mut self, qpath: &'tcx hir::QPath, id: hir::HirId, span: Span) {
+    fn visit_qpath(&mut self, qpath: &'tcx rustc_hir::QPath, id: rustc_hir::HirId, span: Span) {
         if let Some(hir_id) = hir_id_from_path(qpath) {
             if self.state.placeholders.contains(&hir_id)
                 && !self.state.bound_placeholders.insert(hir_id)
@@ -93,7 +94,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for ReplacementValidator<'tcx> {
         intravisit::NestedVisitorMap::All(&self.state.tcx.hir())
     }
 
-    fn visit_qpath(&mut self, qpath: &'tcx hir::QPath, id: hir::HirId, span: Span) {
+    fn visit_qpath(&mut self, qpath: &'tcx rustc_hir::QPath, id: rustc_hir::HirId, span: Span) {
         if let Some(hir_id) = hir_id_from_path(qpath) {
             if self.state.placeholders.contains(&hir_id)
                 && !self.state.bound_placeholders.contains(&hir_id)

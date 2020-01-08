@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::rule_finder::StartMatch;
-use rustc::hir::{self, HirId};
+use rustc_hir::{self, HirId};
 use rustc_span::symbol::Symbol;
 use std::collections::HashMap;
 use std::vec::Vec;
@@ -23,7 +23,7 @@ pub(crate) struct Rule<'tcx, T: StartMatch<'tcx>> {
     pub(crate) search: &'tcx T,
     pub(crate) replace: &'tcx T,
     // The method in which the rule is defined.
-    pub(crate) body_id: hir::BodyId,
+    pub(crate) body_id: rustc_hir::BodyId,
     pub(crate) placeholder_ids: Vec<HirId>,
     // Maps from the names of declared variables (which must be unique within the search pattern) to
     // their HirId. This is used to pair up variables in the search pattern with their counterparts
@@ -36,10 +36,10 @@ pub(crate) struct Rule<'tcx, T: StartMatch<'tcx>> {
 
 #[derive(Debug)]
 pub(crate) struct Rules<'tcx> {
-    pub(crate) expr_rules: Vec<Rule<'tcx, hir::Expr<'tcx>>>,
-    pub(crate) pattern_rules: Vec<Rule<'tcx, hir::Pat<'tcx>>>,
-    pub(crate) type_rules: Vec<Rule<'tcx, hir::Ty<'tcx>>>,
-    pub(crate) trait_ref_rules: Vec<Rule<'tcx, hir::TraitRef<'tcx>>>,
+    pub(crate) expr_rules: Vec<Rule<'tcx, rustc_hir::Expr<'tcx>>>,
+    pub(crate) pattern_rules: Vec<Rule<'tcx, rustc_hir::Pat<'tcx>>>,
+    pub(crate) type_rules: Vec<Rule<'tcx, rustc_hir::Ty<'tcx>>>,
+    pub(crate) trait_ref_rules: Vec<Rule<'tcx, rustc_hir::TraitRef<'tcx>>>,
 }
 
 impl<'tcx> Rules<'tcx> {

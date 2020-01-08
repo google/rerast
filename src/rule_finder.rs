@@ -17,8 +17,9 @@ use crate::definitions::RerastDefinitions;
 use crate::errors::ErrorWithSpan;
 use crate::rule_matcher::{Matchable, OperatorPrecedence};
 use crate::rules::{Rule, Rules};
-use rustc::hir::{self, intravisit, HirId};
+use rustc::hir::intravisit;
 use rustc::ty::{self, TyCtxt};
+use rustc_hir::{self, HirId};
 use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use std::marker;
@@ -30,7 +31,7 @@ pub(crate) struct RuleFinder<'tcx> {
     rerast_definitions: RerastDefinitions<'tcx>,
     rules_mod_symbol: Symbol,
     rules: Rules<'tcx>,
-    body_ids: Vec<hir::BodyId>,
+    body_ids: Vec<rustc_hir::BodyId>,
     in_rules_module: bool,
     errors: Vec<ErrorWithSpan>,
 }
@@ -39,7 +40,7 @@ impl<'tcx> RuleFinder<'tcx> {
     pub(crate) fn find_rules(
         tcx: TyCtxt<'tcx>,
         rerast_definitions: RerastDefinitions<'tcx>,
-        krate: &'tcx hir::Crate,
+        krate: &'tcx rustc_hir::Crate,
     ) -> Result<Rules<'tcx>, Vec<ErrorWithSpan>> {
         let mut rule_finder = RuleFinder {
             tcx,
@@ -62,13 +63,13 @@ impl<'tcx> RuleFinder<'tcx> {
     fn maybe_add_rule(
         &mut self,
         arg_ty: ty::Ty<'tcx>,
-        arms: &'tcx [hir::Arm],
+        arms: &'tcx [rustc_hir::Arm],
         arg_ty_span: Span,
     ) -> Result<(), Vec<ErrorWithSpan>> {
-        if self.maybe_add_typed_rule::<hir::Expr>(arg_ty, arms)?
-            || self.maybe_add_typed_rule::<hir::Pat>(arg_ty, arms)?
-            || self.maybe_add_typed_rule::<hir::TraitRef>(arg_ty, arms)?
-            || self.maybe_add_typed_rule::<hir::Ty>(arg_ty, arms)?
+        if self.maybe_add_typed_rule::<rustc_hir::Expr>(arg_ty, arms)?
+            || self.maybe_add_typed_rule::<rustc_hir::Pat>(arg_ty, arms)?
+            || self.maybe_add_typed_rule::<rustc_hir::TraitRef>(arg_ty, arms)?
+            || self.maybe_add_typed_rule::<rustc_hir::Ty>(arg_ty, arms)?
         {
             Ok(())
         } else {
@@ -84,15 +85,20 @@ impl<'tcx> RuleFinder<'tcx> {
     fn maybe_add_typed_rule<T: 'tcx + StartMatch<'tcx>>(
         &mut self,
         arg_ty: ty::Ty<'tcx>,
-        arms: &'tcx [hir::Arm],
+        arms: &'tcx [rustc_hir::Arm],
     ) -> Result<bool, Vec<ErrorWithSpan>> {
         // Given some arms of a match statement, returns the block for arm_name if any.
-        fn get_arm<'a>(arms: &'a [hir::Arm], arm_name: Symbol) -> Option<&'a hir::Block<'a>> {
+        fn get_arm<'a>(
+            arms: &'a [rustc_hir::Arm],
+            arm_name: Symbol,
+        ) -> Option<&'a rustc_hir::Block<'a>> {
             for arm in arms {
-                if let hir::PatKind::Path(hir::QPath::Resolved(None, ref path)) = arm.pat.kind {
+                if let rustc_hir::PatKind::Path(rustc_hir::QPath::Resolved(None, ref path)) =
+                    arm.pat.kind
+                {
                     if let Some(segment) = path.segments.last() {
                         if segment.ident.name == arm_name {
-                            if let hir::ExprKind::Block(ref block, _) = arm.body.kind {
+                            if let rustc_hir::ExprKind::Block(ref block, _) = arm.body.kind {
                                 return Some(block);
                             }
                         }
@@ -118,10 +124,10 @@ impl<'tcx> RuleFinder<'tcx> {
             // into this form. e.g. if the async function has an argument r,
             // then the function will contain a block with the first statement
             // being let r = r;
-            if let hir::ExprKind::Block(block, ..) = &body.value.kind {
+            if let rustc_hir::ExprKind::Block(block, ..) = &body.value.kind {
                 for stmt in block.stmts.iter() {
-                    if let hir::StmtKind::Local(local) = &stmt.kind {
-                        if let hir::PatKind::Binding(_, hir_id, ..) = &local.pat.kind {
+                    if let rustc_hir::StmtKind::Local(local) = &stmt.kind {
+                        if let rustc_hir::PatKind::Binding(_, hir_id, ..) = &local.pat.kind {
                             placeholder_ids.push(*hir_id);
                         }
                     } else {
@@ -162,8 +168,8 @@ impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
-    fn visit_item(&mut self, item: &'tcx hir::Item) {
-        if let hir::ItemKind::Mod(_) = item.kind {
+    fn visit_item(&mut self, item: &'tcx rustc_hir::Item) {
+        if let rustc_hir::ItemKind::Mod(_) = item.kind {
             if item.ident.name == self.rules_mod_symbol {
                 self.in_rules_module = true;
                 intravisit::walk_item(self, item);
@@ -177,11 +183,11 @@ impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
         intravisit::walk_item(self, item);
     }
 
-    fn visit_expr(&mut self, expr: &'tcx hir::Expr) {
+    fn visit_expr(&mut self, expr: &'tcx rustc_hir::Expr) {
         if !self.in_rules_module {
             return;
         }
-        use crate::hir::ExprKind;
+        use crate::rustc_hir::ExprKind;
         if let ExprKind::Match(ref match_expr, ref arms, _) = expr.kind {
             if let ExprKind::MethodCall(ref _name, ref _tys, ref args) = match_expr.kind {
                 if let Some(&body_id) = self.body_ids.last() {
@@ -201,7 +207,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
         intravisit::walk_expr(self, expr)
     }
 
-    fn visit_body(&mut self, body: &'tcx hir::Body) {
+    fn visit_body(&mut self, body: &'tcx rustc_hir::Body) {
         if !self.in_rules_module {
             return;
         }
@@ -219,7 +225,7 @@ pub(crate) trait StartMatch<'tcx>: Matchable {
         false
     }
     // Extract the root search/replace node from the supplied block.
-    fn extract_root(block: &'tcx hir::Block<'tcx>) -> Result<&'tcx Self, ErrorWithSpan>;
+    fn extract_root(block: &'tcx rustc_hir::Block<'tcx>) -> Result<&'tcx Self, ErrorWithSpan>;
     // Adds the supplied rule to the appropriate typed collection in rules.
     fn add_rule(rule: Rule<'tcx, Self>, rules: &mut Rules<'tcx>)
     where
@@ -233,7 +239,7 @@ pub(crate) trait StartMatch<'tcx>: Matchable {
     fn hir_id(&self) -> HirId;
 }
 
-impl<'tcx> StartMatch<'tcx> for hir::Expr<'tcx> {
+impl<'tcx> StartMatch<'tcx> for rustc_hir::Expr<'tcx> {
     fn span(&self) -> Span {
         self.span
     }
@@ -243,10 +249,10 @@ impl<'tcx> StartMatch<'tcx> for hir::Expr<'tcx> {
     fn needs_parenthesis(parent: Option<&Self>, child: &Self) -> bool {
         OperatorPrecedence::needs_parenthesis(parent, child)
     }
-    fn extract_root(block: &'tcx hir::Block<'tcx>) -> Result<&'tcx Self, ErrorWithSpan> {
+    fn extract_root(block: &'tcx rustc_hir::Block<'tcx>) -> Result<&'tcx Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::StmtKind::Semi(ref addr_expr) = block.stmts[0].kind {
-                if let hir::ExprKind::AddrOf(_, _, ref expr) = addr_expr.kind {
+            if let rustc_hir::StmtKind::Semi(ref addr_expr) = block.stmts[0].kind {
+                if let rustc_hir::ExprKind::AddrOf(_, _, ref expr) = addr_expr.kind {
                     return Ok(&**expr);
                 }
             }
@@ -267,18 +273,18 @@ impl<'tcx> StartMatch<'tcx> for hir::Expr<'tcx> {
     }
 }
 
-impl<'tcx> StartMatch<'tcx> for hir::Ty<'tcx> {
+impl<'tcx> StartMatch<'tcx> for rustc_hir::Ty<'tcx> {
     fn span(&self) -> Span {
         self.span
     }
     fn walk<V: intravisit::Visitor<'tcx>>(visitor: &mut V, node: &'tcx Self) {
         visitor.visit_ty(node);
     }
-    fn extract_root(block: &'tcx hir::Block<'tcx>) -> Result<&'tcx Self, ErrorWithSpan> {
+    fn extract_root(block: &'tcx rustc_hir::Block<'tcx>) -> Result<&'tcx Self, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::StmtKind::Local(ref local) = block.stmts[0].kind {
+            if let rustc_hir::StmtKind::Local(ref local) = block.stmts[0].kind {
                 if let Some(ref ref_ty) = local.ty {
-                    if let hir::TyKind::Rptr(_, ref mut_ty) = ref_ty.kind {
+                    if let rustc_hir::TyKind::Rptr(_, ref mut_ty) = ref_ty.kind {
                         return Ok(&*mut_ty.ty);
                     }
                 }
@@ -300,16 +306,16 @@ impl<'tcx> StartMatch<'tcx> for hir::Ty<'tcx> {
     }
 }
 
-impl<'tcx> StartMatch<'tcx> for hir::TraitRef<'tcx> {
+impl<'tcx> StartMatch<'tcx> for rustc_hir::TraitRef<'tcx> {
     fn span(&self) -> Span {
         self.path.span
     }
     fn walk<V: intravisit::Visitor<'tcx>>(visitor: &mut V, node: &'tcx Self) {
         visitor.visit_trait_ref(node);
     }
-    fn extract_root(block: &'tcx hir::Block<'tcx>) -> Result<&'tcx Self, ErrorWithSpan> {
-        let ty = <hir::Ty as StartMatch>::extract_root(block)?;
-        if let hir::TyKind::TraitObject(ref bounds, _) = ty.kind {
+    fn extract_root(block: &'tcx rustc_hir::Block<'tcx>) -> Result<&'tcx Self, ErrorWithSpan> {
+        let ty = <rustc_hir::Ty as StartMatch>::extract_root(block)?;
+        if let rustc_hir::TyKind::TraitObject(ref bounds, _) = ty.kind {
             if bounds.len() == 1 {
                 return Ok(&bounds[0].trait_ref);
             } else {
@@ -336,21 +342,23 @@ impl<'tcx> StartMatch<'tcx> for hir::TraitRef<'tcx> {
     }
 }
 
-impl<'tcx> StartMatch<'tcx> for hir::Pat<'tcx> {
+impl<'tcx> StartMatch<'tcx> for rustc_hir::Pat<'tcx> {
     fn span(&self) -> Span {
         self.span
     }
     fn walk<V: intravisit::Visitor<'tcx>>(visitor: &mut V, node: &'tcx Self) {
         visitor.visit_pat(node);
     }
-    fn extract_root(block: &'tcx hir::Block<'tcx>) -> Result<&'tcx hir::Pat<'tcx>, ErrorWithSpan> {
+    fn extract_root(
+        block: &'tcx rustc_hir::Block<'tcx>,
+    ) -> Result<&'tcx rustc_hir::Pat<'tcx>, ErrorWithSpan> {
         if block.stmts.len() == 1 && block.expr.is_none() {
-            if let hir::StmtKind::Semi(ref expr) = block.stmts[0].kind {
-                if let hir::ExprKind::Match(_, ref arms, _) = expr.kind {
+            if let rustc_hir::StmtKind::Semi(ref expr) = block.stmts[0].kind {
+                if let rustc_hir::ExprKind::Match(_, ref arms, _) = expr.kind {
                     // The user's pattern is wrapped in Some(x) in order to make all patterns
                     // refutable. Otherwise we'd need the user to use a different macro for
                     // refutable and irrefutable patterns which wouldn't be very ergonomic.
-                    if let hir::PatKind::TupleStruct(_, ref patterns, _) = arms[0].pat.kind {
+                    if let rustc_hir::PatKind::TupleStruct(_, ref patterns, _) = arms[0].pat.kind {
                         return Ok(&patterns[0]);
                     }
                 }
