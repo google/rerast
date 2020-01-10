@@ -27,8 +27,8 @@ use crate::errors;
 use crate::errors::RerastErrors;
 use crate::file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
 use crate::CompilerInvocationInfo;
-use rustc::hir::intravisit;
 use rustc::ty::{TyCtxt, TyKind};
+use rustc_hir::intravisit;
 use rustc_interface::interface;
 use rustc_span::source_map::{FileLoader, FilePathMapping, SourceMap};
 use rustc_span::{BytePos, Pos, Span, SyntaxContext};
@@ -121,7 +121,7 @@ where
         if let rustc_hir::ExprKind::Call(ref _expr_fn, ref args) = expr.kind {
             // Ignore expr_fn as a candidate, just consider the args.
             for arg in *args {
-                use rustc::hir::intravisit::Visitor;
+                use rustc_hir::intravisit::Visitor;
                 self.visit_expr(arg);
             }
         } else {
@@ -134,7 +134,9 @@ impl<'tcx, T, F> intravisit::Visitor<'tcx> for PlaceholderCandidateFinder<'tcx, 
 where
     F: Fn(&'tcx rustc_hir::Expr<'tcx>) -> T,
 {
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
+    type Map = rustc::hir::map::Map<'tcx>;
+
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, Self::Map> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
@@ -560,7 +562,9 @@ impl<'tcx> ReferencedPathsFinder<'tcx> {
 }
 
 impl<'tcx> intravisit::Visitor<'tcx> for ReferencedPathsFinder<'tcx> {
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
+    type Map = rustc::hir::map::Map<'tcx>;
+
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, Self::Map> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
@@ -593,7 +597,9 @@ struct RuleFinder<'tcx> {
 }
 
 impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, 'tcx> {
+    type Map = rustc::hir::map::Map<'tcx>;
+
+    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, Self::Map> {
         intravisit::NestedVisitorMap::All(&self.tcx.hir())
     }
 
