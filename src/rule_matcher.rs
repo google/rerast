@@ -940,8 +940,8 @@ impl Matchable for rustc_hir::Pat<'_> {
                 &Range(ref p_ex1, ref p_ex2, ref p_incl),
                 &Range(ref c_ex1, ref c_ex2, ref c_incl),
             ) => {
-                p_ex1.attempt_match(state, c_ex1)
-                    && p_ex2.attempt_match(state, c_ex2)
+                attempt_match_option(state, *p_ex1, *c_ex1)
+                    && attempt_match_option(state, *p_ex2, *c_ex2)
                     && p_incl == c_incl
             }
             (&Path(ref p), &Path(ref c)) => p.attempt_match(state, c),
