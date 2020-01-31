@@ -274,7 +274,7 @@ impl<'tcx> Replacer<'tcx> {
         for bt in span.macro_backtrace() {
             println!(
                 "Expansion of {} from: {}",
-                bt.macro_decl_name,
+                bt.kind.descr(),
                 codemap.span_to_snippet(bt.call_site).unwrap()
             );
         }
