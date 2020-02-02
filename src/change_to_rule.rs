@@ -21,6 +21,7 @@ extern crate rustc_driver;
 extern crate rustc_hir;
 extern crate rustc_parse;
 extern crate rustc_span;
+extern crate rustc_session;
 extern crate syntax;
 
 use crate::errors;
@@ -39,7 +40,7 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use syntax::sess::ParseSess;
+use rustc_session::parse::ParseSess;
 use syntax::tokenstream::{TokenStream, TokenTree};
 
 struct PlaceholderCandidate<T> {

@@ -81,6 +81,7 @@ extern crate rustc_hir;
 extern crate rustc_interface;
 extern crate rustc_parse;
 extern crate rustc_span;
+extern crate rustc_session;
 extern crate syntax;
 
 pub mod change_to_rule;
