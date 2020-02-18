@@ -20,8 +20,8 @@ extern crate rustc;
 extern crate rustc_driver;
 extern crate rustc_hir;
 extern crate rustc_parse;
-extern crate rustc_span;
 extern crate rustc_session;
+extern crate rustc_span;
 extern crate syntax;
 
 use crate::errors;
@@ -31,6 +31,7 @@ use crate::CompilerInvocationInfo;
 use rustc::ty::{TyCtxt, TyKind};
 use rustc_hir::intravisit;
 use rustc_interface::interface;
+use rustc_session::parse::ParseSess;
 use rustc_span::source_map::{FileLoader, FilePathMapping, SourceMap};
 use rustc_span::{BytePos, Pos, Span, SyntaxContext};
 use std::collections::hash_map::{DefaultHasher, HashMap};
@@ -40,7 +41,6 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use rustc_session::parse::ParseSess;
 use syntax::tokenstream::{TokenStream, TokenTree};
 
 struct PlaceholderCandidate<T> {
