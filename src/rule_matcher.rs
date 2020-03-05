@@ -21,6 +21,7 @@ use crate::Config;
 use rustc::traits::ObligationCause;
 use rustc::ty::subst::Subst;
 use rustc::ty::{self, TyCtxt};
+use rustc_ast::{self, ast};
 use rustc_hir;
 use rustc_hir::intravisit;
 use rustc_hir::HirId;
@@ -31,8 +32,6 @@ use rustc_span::{Span, SpanSnippetError, DUMMY_SP};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::mem;
-use syntax;
-use syntax::ast;
 
 #[macro_export]
 macro_rules! debug {
@@ -471,7 +470,7 @@ impl<T: Matchable> Matchable for [T] {
     }
 }
 
-impl<T: Matchable> Matchable for syntax::ptr::P<T> {
+impl<T: Matchable> Matchable for rustc_ast::ptr::P<T> {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
@@ -1010,7 +1009,7 @@ impl Matchable for rustc_hir::Destination {
     }
 }
 
-impl Matchable for syntax::ast::Label {
+impl Matchable for rustc_ast::ast::Label {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,

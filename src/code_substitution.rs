@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use itertools::Itertools;
+use rustc_ast;
 use rustc_span::source_map::{FileLoader, SourceMap};
 use rustc_span::{self, BytePos, Span};
 use std::collections::{hash_map, HashMap};
@@ -173,9 +174,9 @@ pub(crate) fn apply_substitutions<'a, S: SpanT + Sized + Debug>(
 
 /// Returns whether the supplied code is a single tokentree - e.g. a parenthesised expression.
 fn code_is_single_tree(code: &str) -> bool {
+    use rustc_ast::tokenstream::TokenTree;
     use rustc_session::parse::ParseSess;
     use rustc_span::source_map::FilePathMapping;
-    use syntax::tokenstream::TokenTree;
 
     let session = ParseSess::new(FilePathMapping::empty());
     let ts = rustc_parse::parse_stream_from_source_str(

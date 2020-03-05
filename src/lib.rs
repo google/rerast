@@ -75,6 +75,7 @@ extern crate getopts;
 
 use rerast_macros;
 extern crate rustc;
+extern crate rustc_ast;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_hir;
@@ -83,7 +84,6 @@ extern crate rustc_interface;
 extern crate rustc_parse;
 extern crate rustc_session;
 extern crate rustc_span;
-extern crate syntax;
 
 pub mod change_to_rule;
 pub mod chunked_diff;
@@ -161,7 +161,7 @@ impl CompilerInvocationInfo {
         for (k, v) in &self.env {
             std::env::set_var(k, v);
         }
-        syntax::with_default_globals(|| {
+        rustc_ast::with_default_globals(|| {
             rustc_driver::run_compiler(&self.args, callbacks, file_loader, None)
         })?;
         for k in self.env.keys() {
