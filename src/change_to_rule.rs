@@ -137,8 +137,8 @@ where
 {
     type Map = rustc::hir::map::Map<'tcx>;
 
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, Self::Map> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir())
+    fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
+        intravisit::NestedVisitorMap::All(self.tcx.hir())
     }
 
     fn visit_expr(&mut self, expr: &'tcx rustc_hir::Expr<'tcx>) {
@@ -256,7 +256,7 @@ struct FindRulesState {
 impl rustc_driver::Callbacks for FindRulesState {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         config.diagnostic_output =
-            rustc::session::DiagnosticOutput::Raw(Box::new(self.diagnostic_output.clone()));
+            rustc_session::DiagnosticOutput::Raw(Box::new(self.diagnostic_output.clone()));
     }
 
     fn after_analysis<'tcx>(
@@ -565,8 +565,8 @@ impl<'tcx> ReferencedPathsFinder<'tcx> {
 impl<'tcx> intravisit::Visitor<'tcx> for ReferencedPathsFinder<'tcx> {
     type Map = rustc::hir::map::Map<'tcx>;
 
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, Self::Map> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir())
+    fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
+        intravisit::NestedVisitorMap::All(self.tcx.hir())
     }
 
     fn visit_path(&mut self, path: &'tcx rustc_hir::Path, _: rustc_hir::HirId) {
@@ -600,8 +600,8 @@ struct RuleFinder<'tcx> {
 impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
     type Map = rustc::hir::map::Map<'tcx>;
 
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, Self::Map> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir())
+    fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
+        intravisit::NestedVisitorMap::All(self.tcx.hir())
     }
 
     fn visit_item(&mut self, item: &'tcx rustc_hir::Item) {

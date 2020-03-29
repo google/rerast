@@ -62,8 +62,8 @@ impl<'tcx> RerastDefinitionsFinder<'tcx> {
 impl<'tcx> intravisit::Visitor<'tcx> for RerastDefinitionsFinder<'tcx> {
     type Map = rustc::hir::map::Map<'tcx>;
 
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, Self::Map> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir())
+    fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
+        intravisit::NestedVisitorMap::All(self.tcx.hir())
     }
 
     fn visit_item(&mut self, item: &'tcx rustc_hir::Item) {

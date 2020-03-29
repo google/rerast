@@ -217,8 +217,8 @@ impl<'r, 'tcx> RuleMatcher<'r, 'tcx> {
 impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
     type Map = rustc::hir::map::Map<'tcx>;
 
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, Self::Map> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir())
+    fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
+        intravisit::NestedVisitorMap::All(self.tcx.hir())
     }
 
     fn visit_item(&mut self, item: &'tcx rustc_hir::Item) {
@@ -369,7 +369,7 @@ impl<'r, 'a, 'tcx: 'a> MatchState<'r, 'a, 'tcx> {
         method_call_id: HirId,
         method_type_tables: &ty::TypeckTables<'tcx>,
     ) -> bool {
-        if let Some(Ok((rustc_hir::def::DefKind::Method, method_id))) =
+        if let Some(Ok((rustc_hir::def::DefKind::Fn, method_id))) =
             fn_type_tables.type_dependent_defs().get(fn_expr.hir_id)
         {
             if let Ok((_, method_def_id)) = method_type_tables.type_dependent_defs()[method_call_id]
@@ -1633,8 +1633,8 @@ impl<'r, 'tcx, T: StartMatch<'tcx>> ReplacementVisitor<'r, 'tcx, T> {
 impl<'r, 'tcx, T: StartMatch<'tcx>> intravisit::Visitor<'tcx> for ReplacementVisitor<'r, 'tcx, T> {
     type Map = rustc::hir::map::Map<'tcx>;
 
-    fn nested_visit_map<'this>(&'this mut self) -> intravisit::NestedVisitorMap<'this, Self::Map> {
-        intravisit::NestedVisitorMap::All(&self.tcx.hir())
+    fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
+        intravisit::NestedVisitorMap::All(self.tcx.hir())
     }
 
     fn visit_expr(&mut self, expr: &'tcx rustc_hir::Expr) {
