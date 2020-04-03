@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use rustc::ty::{self, TyCtxt};
 use rustc_hir;
 use rustc_hir::intravisit;
+use rustc_middle::ty::{self, TyCtxt};
 use rustc_span::symbol::Symbol;
 
 #[derive(Copy, Clone)]
@@ -60,7 +60,7 @@ impl<'tcx> RerastDefinitionsFinder<'tcx> {
 // This would be a little easier if there were a way to find functions by name. There's probably
 // something I've missed, but so far I haven't found one.
 impl<'tcx> intravisit::Visitor<'tcx> for RerastDefinitionsFinder<'tcx> {
-    type Map = rustc::hir::map::Map<'tcx>;
+    type Map = rustc_middle::hir::map::Map<'tcx>;
 
     fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
         intravisit::NestedVisitorMap::All(self.tcx.hir())

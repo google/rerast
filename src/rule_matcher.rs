@@ -18,14 +18,14 @@ use crate::definitions::RerastDefinitions;
 use crate::rule_finder::StartMatch;
 use crate::rules::{Rule, Rules};
 use crate::Config;
-use rustc::traits::ObligationCause;
-use rustc::ty::subst::Subst;
-use rustc::ty::{self, TyCtxt};
 use rustc_ast::{self, ast};
 use rustc_hir;
 use rustc_hir::intravisit;
 use rustc_hir::HirId;
 use rustc_infer::infer::{self, InferCtxt, TyCtxtInferExt};
+use rustc_middle::traits::ObligationCause;
+use rustc_middle::ty::subst::Subst;
+use rustc_middle::ty::{self, TyCtxt};
 use rustc_span::source_map::{self, Spanned};
 use rustc_span::symbol::Symbol;
 use rustc_span::{Span, SpanSnippetError, DUMMY_SP};
@@ -215,7 +215,7 @@ impl<'r, 'tcx> RuleMatcher<'r, 'tcx> {
 }
 
 impl<'r, 'tcx> intravisit::Visitor<'tcx> for RuleMatcher<'r, 'tcx> {
-    type Map = rustc::hir::map::Map<'tcx>;
+    type Map = rustc_middle::hir::map::Map<'tcx>;
 
     fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
         intravisit::NestedVisitorMap::All(self.tcx.hir())
@@ -1631,7 +1631,7 @@ impl<'r, 'tcx, T: StartMatch<'tcx>> ReplacementVisitor<'r, 'tcx, T> {
 }
 
 impl<'r, 'tcx, T: StartMatch<'tcx>> intravisit::Visitor<'tcx> for ReplacementVisitor<'r, 'tcx, T> {
-    type Map = rustc::hir::map::Map<'tcx>;
+    type Map = rustc_middle::hir::map::Map<'tcx>;
 
     fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
         intravisit::NestedVisitorMap::All(self.tcx.hir())

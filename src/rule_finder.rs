@@ -17,9 +17,9 @@ use crate::definitions::RerastDefinitions;
 use crate::errors::ErrorWithSpan;
 use crate::rule_matcher::{Matchable, OperatorPrecedence};
 use crate::rules::{Rule, Rules};
-use rustc::ty::{self, TyCtxt};
 use rustc_hir::intravisit;
 use rustc_hir::{self, HirId};
+use rustc_middle::ty::{self, TyCtxt};
 use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use std::marker;
@@ -164,7 +164,7 @@ impl<'tcx> RuleFinder<'tcx> {
 }
 
 impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
-    type Map = rustc::hir::map::Map<'tcx>;
+    type Map = rustc_middle::hir::map::Map<'tcx>;
 
     fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
         intravisit::NestedVisitorMap::All(self.tcx.hir())

@@ -74,13 +74,13 @@
 extern crate getopts;
 
 use rerast_macros;
-extern crate rustc;
 extern crate rustc_ast;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_hir;
 extern crate rustc_infer;
 extern crate rustc_interface;
+extern crate rustc_middle;
 extern crate rustc_parse;
 extern crate rustc_session;
 extern crate rustc_span;
@@ -102,10 +102,10 @@ use crate::errors::RerastErrors;
 use crate::file_loader::InMemoryFileLoader;
 use crate::rule_finder::StartMatch;
 use crate::rules::Rules;
-use rustc::ty::TyCtxt;
 use rustc_hir::intravisit;
 use rustc_hir::HirId;
 use rustc_interface::interface;
+use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::FileLoader;
 use rustc_span::source_map::{self, SourceMap};
 use rustc_span::symbol::Symbol;
@@ -407,7 +407,7 @@ impl<'tcx> DeclaredNamesFinder<'tcx> {
 }
 
 impl<'tcx> intravisit::Visitor<'tcx> for DeclaredNamesFinder<'tcx> {
-    type Map = rustc::hir::map::Map<'tcx>;
+    type Map = rustc_middle::hir::map::Map<'tcx>;
 
     fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
         intravisit::NestedVisitorMap::All(self.tcx.hir())

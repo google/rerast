@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use rustc::ty::TyCtxt;
+use rustc_middle::ty::TyCtxt;
 use rustc_span::{FileLinesResult, Span, SpanLinesError};
 use std;
 use std::fmt;

@@ -16,10 +16,10 @@
 // the change.
 
 extern crate getopts;
-extern crate rustc;
 extern crate rustc_ast;
 extern crate rustc_driver;
 extern crate rustc_hir;
+extern crate rustc_middle;
 extern crate rustc_parse;
 extern crate rustc_session;
 extern crate rustc_span;
@@ -28,10 +28,10 @@ use crate::errors;
 use crate::errors::RerastErrors;
 use crate::file_loader::{ClonableRealFileLoader, InMemoryFileLoader};
 use crate::CompilerInvocationInfo;
-use rustc::ty::{TyCtxt, TyKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_hir::intravisit;
 use rustc_interface::interface;
+use rustc_middle::ty::{TyCtxt, TyKind};
 use rustc_session::parse::ParseSess;
 use rustc_span::source_map::{FileLoader, FilePathMapping, SourceMap};
 use rustc_span::{BytePos, Pos, Span, SyntaxContext};
@@ -135,7 +135,7 @@ impl<'tcx, T, F> intravisit::Visitor<'tcx> for PlaceholderCandidateFinder<'tcx, 
 where
     F: Fn(&'tcx rustc_hir::Expr<'tcx>) -> T,
 {
-    type Map = rustc::hir::map::Map<'tcx>;
+    type Map = rustc_middle::hir::map::Map<'tcx>;
 
     fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
         intravisit::NestedVisitorMap::All(self.tcx.hir())
@@ -563,7 +563,7 @@ impl<'tcx> ReferencedPathsFinder<'tcx> {
 }
 
 impl<'tcx> intravisit::Visitor<'tcx> for ReferencedPathsFinder<'tcx> {
-    type Map = rustc::hir::map::Map<'tcx>;
+    type Map = rustc_middle::hir::map::Map<'tcx>;
 
     fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
         intravisit::NestedVisitorMap::All(self.tcx.hir())
@@ -598,7 +598,7 @@ struct RuleFinder<'tcx> {
 }
 
 impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
-    type Map = rustc::hir::map::Map<'tcx>;
+    type Map = rustc_middle::hir::map::Map<'tcx>;
 
     fn nested_visit_map(&mut self) -> intravisit::NestedVisitorMap<Self::Map> {
         intravisit::NestedVisitorMap::All(self.tcx.hir())
