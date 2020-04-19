@@ -155,6 +155,17 @@ you could copy the printed rule into a .rs file and apply it with --rules_file.
 * replace_type! doesn't yet support placeholders.
 * Probably many bugs and missing features. Please feel free to file bugs / feature requests.
 
+## Known issues
+
+* If you have integration tests (a "tests" directory) in your project, you might
+  be no matches. Not sure why. This started from nightly-2020-04-10. You might
+  be able to work around this issue by passing `--targets ''` to cargo rerast.
+  Unfortunately then you won't get matches in non-integration tests (i.e.
+  cfg(test)). Alternatively you could install an older version of rust and the
+  corresponding rerast version.
+* Using `?` in the replacement is currently broken. This broke I think in
+  February 2020. Something changed with spans.
+
 ## More examples
 See the [Rerast Cookbook](COOKBOOK.md) for more examples.
 
