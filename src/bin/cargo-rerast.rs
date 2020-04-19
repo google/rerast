@@ -162,6 +162,14 @@ fn get_compiler_invocation_infos_for_local_package(
                         })
                         // First value will be the path to cargo-rerast, skip it.
                         .skip(1)
+                        // Filter out any unsupported command-line arguments.
+                        .filter(|v| {
+                            if let Ok(v) = v {
+                                !v.starts_with("-Cembed-bitcode")
+                            } else {
+                                true
+                            }
+                        })
                         .collect();
                     let mut env: HashMap<String, String> = HashMap::new();
                     for (k, v) in env_values.entries() {
