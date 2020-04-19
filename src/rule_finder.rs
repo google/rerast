@@ -195,7 +195,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for RuleFinder<'tcx> {
                 if let Some(&body_id) = self.body_ids.last() {
                     let type_tables = self
                         .tcx
-                        .typeck_tables_of(self.tcx.hir().body_owner_def_id(body_id));
+                        .typeck_tables_of(self.tcx.hir().body_owner_def_id(body_id).to_def_id());
                     let arg0 = &args[0];
                     let arg_ty = type_tables.node_type(arg0.hir_id);
                     if let Err(errors) = self.maybe_add_rule(arg_ty, arms, arg0.span) {

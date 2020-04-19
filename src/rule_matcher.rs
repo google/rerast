@@ -124,7 +124,7 @@ impl<'r, 'tcx> RuleMatcher<'r, 'tcx> {
         original_span: Span,
         rule: &'r Rule<'tcx, T>,
     ) -> Option<Match<'r, 'tcx, T>> {
-        let rule_fn_id = self.tcx.hir().body_owner_def_id(rule.body_id);
+        let rule_fn_id = self.tcx.hir().body_owner_def_id(rule.body_id).to_def_id();
         let rule_tables = self.tcx.body_tables(rule.body_id);
 
         let maybe_match_placeholders = self.tcx.infer_ctxt().enter(|infcx| {
