@@ -15,7 +15,6 @@
 // Given two versions of a source file, finds what's changed and builds a Rerast rule to reproduce
 // the change.
 
-extern crate getopts;
 extern crate rustc_ast;
 extern crate rustc_driver;
 extern crate rustc_hir;
@@ -32,6 +31,7 @@ use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_hir::intravisit;
 use rustc_interface::interface;
 use rustc_middle::ty::{TyCtxt, TyKind};
+use rustc_middle::ty::subst::GenericArgKind;
 use rustc_session::parse::ParseSess;
 use rustc_span::source_map::{FileLoader, FilePathMapping, SourceMap};
 use rustc_span::{BytePos, Pos, Span, SyntaxContext};
@@ -383,9 +383,11 @@ fn build_rule<'a, 'tcx: 'a>(
     let mut uses_type_params = false;
     for ph in placeholders {
         let ph_ty = type_tables.expr_ty(ph.expr);
-        for subtype in ph_ty.walk() {
-            if let TyKind::Param(..) = subtype.kind {
-                uses_type_params = true;
+        for generic in ph_ty.walk() {
+            if let GenericArgKind::Type(subtype) = generic.unpack() {
+                if let TyKind::Param(..) = subtype.kind {
+                    uses_type_params = true;
+                }
             }
         }
     }

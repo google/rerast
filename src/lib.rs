@@ -71,8 +71,6 @@
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 
-extern crate getopts;
-
 use rerast_macros;
 extern crate rustc_ast;
 extern crate rustc_data_structures;
