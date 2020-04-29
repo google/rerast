@@ -41,10 +41,6 @@ impl<T: FileLoader + Send + Sync> FileLoader for InMemoryFileLoader<T> {
         self.files.contains_key(path) || self.inner_file_loader.file_exists(path)
     }
 
-    fn abs_path(&self, _: &Path) -> Option<PathBuf> {
-        None
-    }
-
     fn read_file(&self, path: &Path) -> io::Result<String> {
         if let Some(contents) = self.files.get(path) {
             return Ok(contents.to_string());
@@ -60,10 +56,6 @@ pub(crate) struct ClonableRealFileLoader;
 impl FileLoader for ClonableRealFileLoader {
     fn file_exists(&self, path: &Path) -> bool {
         RealFileLoader.file_exists(path)
-    }
-
-    fn abs_path(&self, path: &Path) -> Option<PathBuf> {
-        RealFileLoader.abs_path(path)
     }
 
     fn read_file(&self, path: &Path) -> io::Result<String> {

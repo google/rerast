@@ -751,10 +751,6 @@ mod tests {
             false
         }
 
-        fn abs_path(&self, _: &Path) -> Option<PathBuf> {
-            None
-        }
-
         fn read_file(&self, path: &Path) -> io::Result<String> {
             match path.to_str() {
                 Some(path_str) => Err(io::Error::new(
