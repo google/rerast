@@ -165,7 +165,8 @@ fn get_compiler_invocation_infos_for_local_package(
                         // Filter out any unsupported command-line arguments.
                         .filter(|v| {
                             if let Ok(v) = v {
-                                !v.starts_with("-Cembed-bitcode")
+                                !(v.starts_with("-Cembed-bitcode")
+                                    || v.starts_with("-Cbitcode-in-rlib"))
                             } else {
                                 true
                             }
