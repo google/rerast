@@ -1019,7 +1019,7 @@ impl Matchable for rustc_ast::ast::Label {
     }
 }
 
-impl Matchable for ast::Ident {
+impl Matchable for rustc_span::symbol::Ident {
     fn attempt_match<'r, 'a, 'tcx>(
         &self,
         state: &mut MatchState<'r, 'a, 'tcx>,
