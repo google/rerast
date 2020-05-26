@@ -15,13 +15,13 @@ authors = [
 
 [dependencies]
 rerast_macros = { version = "0.1.12", path = "rerast_macros" }
-itertools = "0.8.0"
+itertools = "0.9.0"
 clap = "2.33.0"
-json = "0.11.15"
-diff = "0.1.11"
-colored = "1.8.0"
-failure = "0.1.5"
+json = "0.12.4"
+diff = "0.1.12"
+colored = "1.9.3"
+failure = "0.1.8"
 
 [dev-dependencies]
-predicates = "1.0.1"
-assert_cmd = "0.11.1"
+predicates = "1.0.4"
+assert_cmd = "1.0.1"
