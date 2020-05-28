@@ -1,0 +1,15 @@
+language: rust
+rust:
+  - nightly
+os:
+  - linux
+  - osx
+install:
+  - rustup component add --toolchain nightly rustc-dev
+notifications:
+  email:
+    - rerast-dev@googlegroups.com
+    - dvdlttmr@gmail.com
+branches:
+  except:
+    - rerast-stable
