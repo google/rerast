@@ -10,3 +10,6 @@ notifications:
   email:
     - rerast-dev@googlegroups.com
     - dvdlttmr@gmail.com
+branches:
+  except:
+    - rerast-stable
