@@ -7,7 +7,4 @@ edition = "2018"
 [dependencies]
 argh = "0.1.3"
 ra_syntax = { path = "../../src/rust-analyzer/crates/ra_syntax" }
-ra_tt = { path = "../../src/rust-analyzer/crates/ra_tt" }
-ra_mbe = { path = "../../src/rust-analyzer/crates/ra_mbe" }
-ra_parser = { path = "../../src/rust-analyzer/crates/ra_parser" }
 rowan = "0.10.0"
