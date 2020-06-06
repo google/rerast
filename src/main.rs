@@ -14,7 +14,7 @@
 
 use argh::FromArgs;
 use ra_syntax::ast::{AstNode, SourceFile};
-use ra_syntax::{NodeOrToken, SyntaxKind, SyntaxNode, SmolStr};
+use ra_syntax::{NodeOrToken, SmolStr, SyntaxKind, SyntaxNode};
 use rowan;
 use std::collections::HashMap;
 use std::fmt;
@@ -47,10 +47,18 @@ struct Token {
     text: SmolStr,
 }
 
-#[derive(Debug)]
 enum PatternElement {
     Token(Token),
     Placeholder(Placeholder),
+}
+
+impl fmt::Debug for PatternElement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PatternElement::Token(t) => write!(f, "\"{}\" - {:?}", t.text, t.kind),
+            PatternElement::Placeholder(p) => write!(f, "${} - placeholder", p.ident),
+        }
+    }
 }
 
 fn parse_pattern(pattern_str: &str, remove_whitespace: bool) -> Result<Vec<PatternElement>, Error> {
@@ -111,7 +119,6 @@ fn validate_rule(pattern: &[PatternElement], replacement: &[PatternElement]) -> 
     Ok(())
 }
 
-#[derive(Debug)]
 struct Placeholder {
     ident: SmolStr,
 }
@@ -156,13 +163,20 @@ fn print_tree(n: &SyntaxNode, depth: usize) {
 }
 
 fn print_debug_start(search: &[PatternElement], code: &SyntaxNode) {
-    println!(
-        "========= PATTERN ==========\n{:#?}\n\
-                ============ AST ===========\n",
-        search
-    );
+    println!("========= PATTERN ==========\n{:#?}\n", search);
+    println!("\n============ AST ===========\n");
     print_tree(code, 0);
     println!("\n============================");
+}
+
+// Converts a RA NodeOrToken to a green NodeOrToken.
+fn to_green_node_or_token(
+    n: &ra_syntax::NodeOrToken<SyntaxNode, ra_syntax::SyntaxToken>,
+) -> rowan::NodeOrToken<rowan::GreenNode, rowan::GreenToken> {
+    match n {
+        NodeOrToken::Node(n) => rowan::NodeOrToken::Node(n.green().clone()),
+        NodeOrToken::Token(t) => rowan::NodeOrToken::Token(t.green().clone()),
+    }
 }
 
 struct MatchState {
@@ -206,10 +220,14 @@ impl MatchState {
             pattern.next();
             return Ok(());
         }
-        for child in code.children_with_tokens() {
-            match child {
-                NodeOrToken::Node(c) => self.attempt_match_node(pattern, &c)?,
-                NodeOrToken::Token(c) => self.attempt_match_token(pattern, &c)?,
+        if code.kind() == SyntaxKind::TOKEN_TREE {
+            self.attempt_match_token_tree(pattern, code)?;
+        } else {
+            for child in code.children_with_tokens() {
+                match child {
+                    NodeOrToken::Node(c) => self.attempt_match_node(pattern, &c)?,
+                    NodeOrToken::Token(c) => self.attempt_match_token(pattern, &c)?,
+                }
             }
         }
         Ok(())
@@ -220,7 +238,8 @@ impl MatchState {
         pattern: &mut PatternIterator,
         code: &ra_syntax::SyntaxToken,
     ) -> Result<(), MatchFailed> {
-        if code.kind() == SyntaxKind::WHITESPACE {
+        // Ignore whitespace and comments.
+        if code.kind().is_trivia() {
             return Ok(());
         }
         let code_text = code.text().to_string();
@@ -251,6 +270,81 @@ impl MatchState {
                         "Pattern exhausted, while code remains: `{}`",
                         code_remaining
                     );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // Placeholders have different semantics within token trees. Outside of
+    // token trees a placeholder can only match a single AST node, whereas in a
+    // token tree it can match a sequence of tokens.
+    fn attempt_match_token_tree(
+        &mut self,
+        pattern: &mut PatternIterator,
+        code: &ra_syntax::SyntaxNode,
+    ) -> Result<(), MatchFailed> {
+        let mut children = code.children_with_tokens();
+        while let Some(child) = children.next() {
+            if let Some(PatternElement::Placeholder(_)) = pattern.peek() {
+                if let Some(PatternElement::Placeholder(placeholder)) = pattern.next() {
+                    let next_pattern_token = if let Some(PatternElement::Token(t)) = pattern.peek()
+                    {
+                        Some(t.text.to_string())
+                    } else {
+                        None
+                    };
+                    let mut matched = Vec::new();
+                    matched.push(to_green_node_or_token(&child));
+                    // Read code tokens util we reach one equal to the next
+                    // token from our pattern or we reach the end of the token
+                    // tree.
+                    while let Some(next) = children.next() {
+                        if Some(next.to_string()) == next_pattern_token {
+                            pattern.next();
+                            break;
+                        }
+                        matched.push(to_green_node_or_token(&next));
+                    }
+                    self.placeholder_values.insert(
+                        placeholder.ident.clone(),
+                        SyntaxNode::new_root(rowan::GreenNode::new(code.green().kind(), matched)),
+                    );
+                }
+                continue;
+            }
+            // Match literal (non-placeholder) tokens.
+            match child {
+                NodeOrToken::Token(token) => {
+                    // Ignore whitespace and comments.
+                    if token.kind().is_trivia() {
+                        continue;
+                    }
+                    if let Some(p) = pattern.next() {
+                        if let PatternElement::Token(pattern_token) = p {
+                            if *token.text() != pattern_token.text {
+                                fail_match!(
+                                    self,
+                                    "Pattern had token {:?}, code had {:?}",
+                                    pattern_token,
+                                    token
+                                );
+                            }
+                        } else {
+                            // We peeked above to see if it was a placeholder.
+                            unreachable!();
+                        }
+                    } else {
+                        fail_match!(self,
+                            "Reached end of pattern, but we're part way through a token tree at token {:?}",
+                            token);
+                    }
+                }
+                NodeOrToken::Node(node) => {
+                    if node.kind() != SyntaxKind::TOKEN_TREE {
+                        fail_match!(self, "Found unexpected node inside token tree {:?}", node);
+                    }
+                    self.attempt_match_token_tree(pattern, &node)?;
                 }
             }
         }
@@ -368,11 +462,7 @@ impl MatchFinder {
         let replace = parse_pattern(replace, false)?;
         validate_rule(&search, &replace)?;
         Ok(self
-            .apply(
-                &search,
-                &replace,
-                SourceFile::parse(code).tree().syntax(),
-            )?
+            .apply(&search, &replace, SourceFile::parse(code).tree().syntax())?
             .text()
             .to_string())
     }
@@ -437,7 +527,9 @@ mod tests {
             let r = find($pat, $code);
             let e = vec![$($expected),*].iter().map(|e: &&str| e.to_string()).collect::<Vec<String>>();
             if r != e && !e.is_empty() {
-                println!("To debug:\n  cargo run -- --code '{}' --search '{}' --debug-snippet '{}'",
+                println!(
+                    "Test is about to fail, to debug run:\
+                    \n  cargo run -- --code '{}' --search '{}' --debug-snippet '{}'",
                     $code, $pat, e[0]);
             }
             assert_eq!(r, e);
@@ -490,6 +582,18 @@ mod tests {
     }
 
     #[test]
+    fn match_macro_invocation() {
+        assert_matches!("foo!($a)", "fn() {foo(foo!(foo()))}", ["foo!(foo())"]);
+        assert_matches!(
+            "foo!(41, $a, 43)",
+            "fn() {foo!(41, 42, 43)}",
+            ["foo!(41, 42, 43)"]
+        );
+        assert_no_match!("foo!(50, $a, 43)", "fn() {foo!(41, 42, 43}");
+        assert_no_match!("foo!(41, $a, 50)", "fn() {foo!(41, 42, 43}");
+    }
+
+    #[test]
     fn invalid_placeholder() {
         assert_eq!(
             MatchFinder::default().find_match_str("($)", "fn foo() {}"),
@@ -532,16 +636,32 @@ mod tests {
         );
         Ok(())
     }
+    #[test]
+    fn replace_try_macro() -> Result<(), Error> {
+        assert_eq!(
+            apply(
+                "try!($a)",
+                "$a?",
+                "fn f1() -> Result<(), E> {bar(try!(foo()));}"
+            )?,
+            "fn f1() -> Result<(), E> {bar(foo()?);}"
+        );
+        Ok(())
+    }
 
     #[test]
     fn undefined_placeholder_in_replacement() {
         assert_eq!(
             apply("42", "$a", "fn f() ->i32 {42}"),
-            Err(Error::message("Replacement contains undefined placeholders: $a".to_owned()))
+            Err(Error::message(
+                "Replacement contains undefined placeholders: $a".to_owned()
+            ))
         );
         assert_eq!(
             apply("43", "$a", "fn f() ->i32 {42}"),
-            Err(Error::message("Replacement contains undefined placeholders: $a".to_owned()))
+            Err(Error::message(
+                "Replacement contains undefined placeholders: $a".to_owned()
+            ))
         );
     }
 }
