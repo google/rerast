@@ -123,12 +123,14 @@ struct Placeholder {
     ident: SmolStr,
 }
 
-// An "error" indicating that matching failed.
+// An "error" indicating that matching failed. Use the fail_match! macro to
+// create and return this.
 struct MatchFailed {}
 
-/// Fails the current match attempt. If we're currently attempting to match some code that we
-/// thought we were going to match, as indicated by the --debug-snippet flag, then print the
-/// reason why we didn't match before failing.
+/// Fails the current match attempt. If we're currently attempting to match some
+/// code that we thought we were going to match, as indicated by the
+/// --debug-snippet flag, then print the reason why we didn't match before
+/// failing.
 macro_rules! fail_match {
     ($s:expr, $e:expr) => {
         if $s.debug_active {
@@ -250,6 +252,7 @@ impl MatchState {
         while !code_remaining.is_empty() {
             match pattern.next() {
                 Some(PatternElement::Placeholder(_)) => {
+                    // Not sure if this is actually reachable.
                     fail_match!(self, "Placeholders matching tokens is not yet implemented");
                 }
                 Some(PatternElement::Token(p)) => {
@@ -277,7 +280,7 @@ impl MatchState {
     }
 
     // Placeholders have different semantics within token trees. Outside of
-    // token trees a placeholder can only match a single AST node, whereas in a
+    // token trees, a placeholder can only match a single AST node, whereas in a
     // token tree it can match a sequence of tokens.
     fn attempt_match_token_tree(
         &mut self,
@@ -300,10 +303,23 @@ impl MatchState {
                     // token from our pattern or we reach the end of the token
                     // tree.
                     while let Some(next) = children.next() {
-                        if Some(next.to_string()) == next_pattern_token {
-                            pattern.next();
-                            break;
-                        }
+                        match &next {
+                            NodeOrToken::Token(t) => {
+                                if Some(t.to_string()) == next_pattern_token {
+                                    pattern.next();
+                                    break;
+                                }
+                            }
+                            NodeOrToken::Node(n) => {
+                                if let Some(first_token) = n.first_token() {
+                                    if Some(first_token.to_string()) == next_pattern_token {
+                                        // We have a subtree that starts with the next token in our pattern.
+                                        self.attempt_match_token_tree(pattern, &n)?;
+                                        break;
+                                    }
+                                }
+                            }
+                        };
                         matched.push(to_green_node_or_token(&next));
                     }
                     self.placeholder_values.insert(
@@ -591,6 +607,7 @@ mod tests {
         );
         assert_no_match!("foo!(50, $a, 43)", "fn() {foo!(41, 42, 43}");
         assert_no_match!("foo!(41, $a, 50)", "fn() {foo!(41, 42, 43}");
+        assert_matches!("foo!($a())", "fn() {foo!(bar())}", ["foo!(bar())"]);
     }
 
     #[test]
@@ -637,7 +654,7 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn replace_try_macro() -> Result<(), Error> {
+    fn replace_macro_invocations() -> Result<(), Error> {
         assert_eq!(
             apply(
                 "try!($a)",
@@ -645,6 +662,14 @@ mod tests {
                 "fn f1() -> Result<(), E> {bar(try!(foo()));}"
             )?,
             "fn f1() -> Result<(), E> {bar(foo()?);}"
+        );
+        assert_eq!(
+            apply(
+                "foo!($a($b))",
+                "foo($b, $a)",
+                "fn f1() {foo!(abc(def() + 2));}"
+            )?,
+            "fn f1() {foo(def() + 2, abc);}"
         );
         Ok(())
     }
