@@ -268,7 +268,7 @@ impl rustc_driver::Callbacks for FindRulesState {
         queries.global_ctxt().unwrap().peek_mut().enter(|tcx| {
             let source_map = tcx.sess.source_map();
             let maybe_filemap = source_map.get_source_file(&rustc_span::FileName::Real(
-                PathBuf::from(&self.modified_file_name),
+                rustc_span::RealFileName::Named(PathBuf::from(&self.modified_file_name)),
             ));
             let filemap = if let Some(f) = maybe_filemap {
                 f

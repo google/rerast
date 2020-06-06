@@ -225,7 +225,7 @@ impl FileRelativeSubstitutions {
         for (filename, file_substitutions) in &substitutions_grouped_by_file {
             if let rustc_span::FileName::Real(ref path) = filename {
                 let file_relative_for_file = by_file
-                    .entry(path.to_path_buf())
+                    .entry(path.local_path().to_path_buf())
                     .or_insert_with(Default::default);
                 let source_file = source_map.get_source_file(&filename).unwrap();
                 for subst in file_substitutions {
