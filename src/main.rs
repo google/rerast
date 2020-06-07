@@ -13,11 +13,12 @@
 // limitations under the License.
 
 use argh::FromArgs;
+use ra_db::FileId;
 use ra_syntax::ast::{self, AstNode, SourceFile};
 use ra_syntax::{NodeOrToken, SmolStr, SyntaxElement, SyntaxKind, SyntaxNode};
 use rowan;
-use std::collections::{HashSet, HashMap};
-use std::fmt;
+use std::collections::{HashMap, HashSet};
+use std::{cell::Cell, fmt};
 
 #[derive(Debug, Eq, PartialEq)]
 struct Error {
@@ -25,8 +26,10 @@ struct Error {
 }
 
 impl Error {
-    fn message(message: String) -> Error {
-        Error { message }
+    fn new(message: impl Into<String>) -> Error {
+        Error {
+            message: message.into(),
+        }
     }
 }
 
@@ -37,8 +40,8 @@ impl fmt::Display for Error {
 }
 
 macro_rules! bail {
-    ($e:expr) => {return Err($crate::Error::message($e.to_owned()))};
-    ($fmt:expr, $($arg:tt)+) => {return Err($crate::Error::message(format!($fmt, $($arg)+)))}
+    ($e:expr) => {return Err($crate::Error::new($e))};
+    ($fmt:expr, $($arg:tt)+) => {return Err($crate::Error::new(format!($fmt, $($arg)+)))}
 }
 
 #[derive(Debug, Clone)]
@@ -61,49 +64,126 @@ impl fmt::Debug for PatternElement {
     }
 }
 
-fn parse_pattern(pattern_str: &str, remove_whitespace: bool) -> Result<Vec<PatternElement>, Error> {
-    let mut result = Vec::new();
+fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
     let mut start = 0;
-    let (tokens, errors) = ra_syntax::tokenize(pattern_str);
-    let mut placeholder_names = HashSet::new();
+    let (raw_tokens, errors) = ra_syntax::tokenize(source);
     if let Some(first_error) = errors.first() {
         bail!("Failed to parse pattern: {}", first_error);
     }
-    let mut dollar = false;
-    for token in tokens {
-        let token_len = usize::from(token.len);
-        let text = SmolStr::new(&pattern_str[start..start + token_len]);
-        if dollar {
-            if token.kind == SyntaxKind::IDENT {
-                if !placeholder_names.insert(text.clone()) {
-                    bail!("Duplicate placeholder: ${}", text);
-                }
-                result.push(PatternElement::Placeholder(Placeholder {
-                    ident: text,
-                    terminator: None,
-                }));
-                dollar = false;
-            } else {
-                bail!("Missing placeholder name");
-            }
-        } else if text.as_str() == "$" {
-            dollar = true;
-        } else if !remove_whitespace || token.kind != SyntaxKind::WHITESPACE {
+    Ok(raw_tokens
+        .iter()
+        .map(|raw_token| {
+            let token_len = usize::from(raw_token.len);
             let token = Token {
-                kind: token.kind,
-                text,
+                kind: raw_token.kind,
+                text: SmolStr::new(&source[start..start + token_len]),
             };
+            start += token_len;
+            token
+        })
+        .collect())
+}
+
+fn parse_pattern(pattern_str: &str, remove_whitespace: bool) -> Result<Vec<PatternElement>, Error> {
+    let mut result = Vec::new();
+    let mut placeholder_names = HashSet::new();
+    let mut tokens = tokenize(pattern_str)?.into_iter();
+    while let Some(token) = tokens.next() {
+        if token.kind == SyntaxKind::DOLLAR {
+            let placeholder = parse_placeholder(&mut tokens)?;
+            if !placeholder_names.insert(placeholder.ident.clone()) {
+                bail!("Duplicate placeholder: ${}", placeholder.ident);
+            }
+            result.push(PatternElement::Placeholder(placeholder));
+        } else if !remove_whitespace || token.kind != SyntaxKind::WHITESPACE {
             if let Some(PatternElement::Placeholder(last_placeholder)) = result.last_mut() {
                 last_placeholder.terminator = Some(token.clone());
             }
             result.push(PatternElement::Token(token));
         }
-        start += token_len;
-    }
-    if dollar {
-        bail!("Placeholder ($) with no name");
     }
     Ok(result)
+}
+
+fn parse_placeholder(tokens: &mut std::vec::IntoIter<Token>) -> Result<Placeholder, Error> {
+    let mut name = None;
+    let mut constraints = Vec::new();
+    if let Some(token) = tokens.next() {
+        match token.kind {
+            SyntaxKind::IDENT => {
+                name = Some(token.text);
+            }
+            SyntaxKind::L_CURLY => {
+                let token = tokens
+                    .next()
+                    .ok_or_else(|| Error::new("Unexpected end of placeholder"))?;
+                if token.kind == SyntaxKind::IDENT {
+                    name = Some(token.text);
+                }
+                loop {
+                    let token = tokens
+                        .next()
+                        .ok_or_else(|| Error::new("Placeholder is missing closing brace '}'"))?;
+                    match token.kind {
+                        SyntaxKind::COLON => {
+                            constraints.push(parse_constraint(tokens)?);
+                        }
+                        SyntaxKind::R_CURLY => break,
+                        _ => bail!(
+                            "Unexpected token while parsing placeholder: '{}'",
+                            token.text
+                        ),
+                    }
+                }
+            }
+            _ => {
+                bail!("Placeholders should either be $name or ${name:constraints}");
+            }
+        }
+    }
+    let name = name.ok_or_else(|| Error::new("Placeholder ($) with no name"))?;
+    Ok(Placeholder {
+        ident: name,
+        terminator: None,
+        constraints,
+    })
+}
+
+fn parse_constraint(tokens: &mut std::vec::IntoIter<Token>) -> Result<Constraint, Error> {
+    let constraint_type = tokens
+        .next()
+        .ok_or_else(|| Error::new(""))?
+        .text
+        .to_string();
+    match constraint_type.as_str() {
+        "type" => {
+            let mut path = Vec::new();
+            expect_token(tokens, "(")?;
+            loop {
+                let token = tokens.next().ok_or_else(|| {
+                    Error::new("Unexpected end of constraint while looking for closing ')'")
+                })?;
+                match token.kind {
+                    SyntaxKind::IDENT => path.push(token.text),
+                    SyntaxKind::COLON => {}
+                    SyntaxKind::R_PAREN => break,
+                    _ => bail!("Unexpected token '{}' while parsing constraint", token.text),
+                }
+            }
+            Ok(Constraint::ExprType(path))
+        }
+        x => bail!("Unsupported constraint type {}", x),
+    }
+}
+
+fn expect_token(tokens: &mut std::vec::IntoIter<Token>, expected: &str) -> Result<(), Error> {
+    if let Some(t) = tokens.next() {
+        if t.text == expected {
+            return Ok(());
+        }
+        bail!("Expected {} found {}", expected, t.text);
+    }
+    bail!("Expected {} found end of stream");
 }
 
 fn validate_rule(pattern: &[PatternElement], replacement: &[PatternElement]) -> Result<(), Error> {
@@ -136,6 +216,11 @@ struct Placeholder {
     // the outermost node that is followed by this token. This allows `$a: 1` to match `foo: 1`
     // instead of the placeholder consuming the whole thing then failing when we get to the `:`
     terminator: Option<Token>,
+    constraints: Vec<Constraint>,
+}
+
+enum Constraint {
+    ExprType(Vec<SmolStr>),
 }
 
 impl Placeholder {
@@ -172,22 +257,30 @@ struct MatchFailed {
     reason: Option<String>,
 }
 
+thread_local! {
+    pub static RECORDING_MATCH_FAIL_REASONS: Cell<bool> = Cell::new(false);
+}
+
+fn recording_match_fail_reasons() -> bool {
+    RECORDING_MATCH_FAIL_REASONS.with(|c| c.get())
+}
+
 /// Fails the current match attempt. If we're currently attempting to match some code that we
 /// thought we were going to match, as indicated by the --debug-snippet flag, then populate the
 /// reason field.
 macro_rules! fail_match {
-    ($s:expr, $e:expr) => {
-        if $s.debug_active {
+    ($e:expr) => {{
+        if recording_match_fail_reasons() {
             return Err(MatchFailed { reason: Some(format!("{}", $e)) });
         }
-        return Err(MatchFailed { reason: None })
-    };
-    ($s:expr, $fmt:expr, $($arg:tt)+) => {
-        if $s.debug_active {
+        return Err(MatchFailed { reason: None });
+    }};
+    ($fmt:expr, $($arg:tt)+) => {{
+        if recording_match_fail_reasons() {
             return Err(MatchFailed { reason: Some(format!($fmt, $($arg)+)) });
         }
-        return Err(MatchFailed { reason: None })
-    };
+        return Err(MatchFailed { reason: None });
+    }};
 }
 
 fn indent(num_spaces: usize) -> String {
@@ -225,28 +318,30 @@ fn to_green_node_or_token(
     }
 }
 
-struct MatchState {
-    debug_active: bool,
+struct MatchState<'db, 'sema> {
     placeholder_values: HashMap<SmolStr, SyntaxNode>,
+    sema: &'sema ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
+    root_module: ra_hir::Module,
 }
 
 type PatternIterator<'a> = std::iter::Peekable<std::slice::Iter<'a, PatternElement>>;
 
-impl MatchState {
+impl<'db, 'sema> MatchState<'db, 'sema> {
     fn matches(
-        debug_active: bool,
         search: &[PatternElement],
         code: &SyntaxNode,
-    ) -> Result<MatchState, MatchFailed> {
+        sema: &'sema ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
+        root_module: &ra_hir::Module,
+    ) -> Result<MatchState<'db, 'sema>, MatchFailed> {
         let mut match_state = MatchState {
-            debug_active,
             placeholder_values: HashMap::new(),
+            sema,
+            root_module: root_module.clone(),
         };
         let mut pattern_iter = search.iter().peekable();
         match_state.attempt_match_node(&mut pattern_iter, code)?;
         if let Some(pattern_next) = pattern_iter.next() {
             fail_match!(
-                match_state,
                 "Code exhausted, but pattern still has content: {:?}",
                 pattern_next
             );
@@ -258,8 +353,11 @@ impl MatchState {
         debug_active: bool,
         search: &[PatternElement],
         code: &SyntaxNode,
-    ) -> Option<MatchState> {
-        match Self::matches(debug_active, search, code) {
+        sema: &'sema ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
+        root_module: &ra_hir::Module,
+    ) -> Option<MatchState<'db, 'sema>> {
+        RECORDING_MATCH_FAIL_REASONS.with(|c| c.set(debug_active));
+        let result = match Self::matches(search, code, sema, root_module) {
             Ok(state) => Some(state),
             Err(match_failed) => {
                 if debug_active {
@@ -271,7 +369,9 @@ impl MatchState {
                 }
                 None
             }
-        }
+        };
+        RECORDING_MATCH_FAIL_REASONS.with(|c| c.set(false));
+        result
     }
 
     fn attempt_match_node(
@@ -282,6 +382,9 @@ impl MatchState {
         // Handle placeholders.
         if let Some(PatternElement::Placeholder(placeholder)) = pattern.peek() {
             if placeholder.can_consume(code) {
+                for constraint in &placeholder.constraints {
+                    self.validate_constraint(constraint, code)?;
+                }
                 self.placeholder_values
                     .insert(placeholder.ident.clone(), code.clone());
                 pattern.next();
@@ -311,6 +414,55 @@ impl MatchState {
             }
         }
         Ok(())
+    }
+
+    fn validate_constraint(
+        &self,
+        constraint: &Constraint,
+        code: &SyntaxNode,
+    ) -> Result<(), MatchFailed> {
+        match constraint {
+            Constraint::ExprType(constraint_path) => {
+                if let Some(expr) = ast::Expr::cast(code.clone()) {
+                    if let Some(ty) = self.sema.type_of_expr(&expr) {
+                        let ty_path = self.get_type_path(&ty)?;
+                        if ty_path != constraint_path.as_slice() {
+                            fail_match!(
+                                "Expected type {}, found {}",
+                                constraint_path.join("::"),
+                                ty_path.join("::")
+                            );
+                        }
+                    } else {
+                        fail_match!("Couldn't get expression type for code `{}`", code.text());
+                    }
+                } else {
+                    fail_match!("Not an expression `{}`", code.text());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn get_type_path(&self, ty: &ra_hir::Type) -> Result<Vec<SmolStr>, MatchFailed> {
+        if let Some(adt) = ty.as_adt() {
+            let module = adt.module(self.sema.db);
+            let mut ty_path: Vec<SmolStr> = module
+                .path_to_root(self.sema.db)
+                .iter()
+                .filter_map(|m| m.name(self.sema.db))
+                .map(|name| SmolStr::new(name.to_string()))
+                .collect();
+            ty_path.reverse();
+            ty_path.push(SmolStr::new(adt.name(self.sema.db).to_string()));
+            Ok(ty_path)
+        } else {
+            match ra_hir::HirDisplay::display_source_code(ty, self.sema.db, self.root_module.into())
+            {
+                Ok(type_name) => Ok(vec![SmolStr::new(type_name)]),
+                Err(e) => fail_match!("Failed to get type: {:?}", e),
+            }
+        }
     }
 
     // We want to allow the records to match in any order, so we have special matching logic for
@@ -353,7 +505,6 @@ impl MatchState {
         }
         if let Some(unmatched_fields) = fields_by_name.keys().next() {
             fail_match!(
-                self,
                 "{} field(s) of a record literal failed to match, starting with {}",
                 fields_by_name.len(),
                 unmatched_fields
@@ -392,14 +543,13 @@ impl MatchState {
             match pattern.next() {
                 Some(PatternElement::Placeholder(_)) => {
                     // Not sure if this is actually reachable.
-                    fail_match!(self, "Placeholders matching tokens is not yet implemented");
+                    fail_match!("Placeholders matching tokens is not yet implemented");
                 }
                 Some(PatternElement::Token(p)) => {
                     if code_remaining.starts_with(p.text.as_str()) {
                         code_remaining = &code_remaining[p.text.as_str().len()..];
                     } else {
                         fail_match!(
-                            self,
                             "Pattern had token `{}` while code had token `{}`",
                             p.text,
                             code_text,
@@ -408,7 +558,6 @@ impl MatchState {
                 }
                 None => {
                     fail_match!(
-                        self,
                         "Pattern exhausted, while code remains: `{}`",
                         code_remaining
                     );
@@ -478,7 +627,6 @@ impl MatchState {
                         if let PatternElement::Token(pattern_token) = p {
                             if *token.text() != pattern_token.text {
                                 fail_match!(
-                                    self,
                                     "Pattern had token {:?}, code had {:?}",
                                     pattern_token,
                                     token
@@ -489,14 +637,14 @@ impl MatchState {
                             unreachable!();
                         }
                     } else {
-                        fail_match!(self,
+                        fail_match!(
                             "Reached end of pattern, but we're part way through a token tree at token {:?}",
                             token);
                     }
                 }
                 SyntaxElement::Node(node) => {
                     if node.kind() != SyntaxKind::TOKEN_TREE {
-                        fail_match!(self, "Found unexpected node inside token tree {:?}", node);
+                        fail_match!("Found unexpected node inside token tree {:?}", node);
                     }
                     self.attempt_match_token_tree(pattern, &node)?;
                 }
@@ -537,35 +685,60 @@ struct Match {
     placeholder_values: HashMap<SmolStr, SyntaxNode>,
 }
 
-#[derive(Default)]
-struct MatchFinder {
+struct MatchFinder<'db> {
     debug_snippet: Option<String>,
+    sema: ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
 }
 
-impl MatchFinder {
-    fn find_matches(&self, search: &[PatternElement], code: &SyntaxNode, matches: &mut Vec<Match>) {
+impl<'db> MatchFinder<'db> {
+    fn new(debug_snippet: Option<String>, db: &'db ra_ide_db::RootDatabase) -> MatchFinder<'db> {
+        MatchFinder {
+            debug_snippet,
+            sema: ra_hir::Semantics::new(db),
+        }
+    }
+
+    fn root_module(&self, node: &SyntaxNode) -> Result<ra_hir::Module, Error> {
+        self.sema
+            .scope(node)
+            .module()
+            .ok_or_else(|| Error::new("Failed to get root module"))
+    }
+
+    fn find_matches(
+        &self,
+        search: &[PatternElement],
+        code: &SyntaxNode,
+        root_module: &ra_hir::Module,
+        matches: &mut Vec<Match>,
+    ) {
         for c in code.children() {
             let debug_active =
                 self.debug_snippet.is_some() && Some(c.text().to_string()) == self.debug_snippet;
             if debug_active {
                 print_debug_start(search, &c);
             }
-            if let Some(match_state) = MatchState::get_match(debug_active, &search, &c) {
+            if let Some(match_state) =
+                MatchState::get_match(debug_active, &search, &c, &self.sema, root_module)
+            {
                 matches.push(Match {
                     matched_node: c.clone(),
                     placeholder_values: match_state.placeholder_values,
                 });
             } else {
-                self.find_matches(search, &c, matches);
+                self.find_matches(search, &c, root_module, matches);
             }
         }
     }
 
-    fn find_match_str(&self, pattern_str: &str, code: &str) -> Result<Vec<String>, Error> {
+    fn find_match_str(&self, pattern_str: &str, file_id: FileId) -> Result<Vec<String>, Error> {
         let mut matches = Vec::new();
+        let file = self.sema.parse(file_id);
+        let code = file.syntax();
         self.find_matches(
             &parse_pattern(pattern_str, true)?,
-            SourceFile::parse(code).tree().syntax(),
+            code,
+            &self.root_module(code)?,
             &mut matches,
         );
         return Ok(matches
@@ -578,6 +751,7 @@ impl MatchFinder {
         &self,
         search: &[PatternElement],
         replace: &[PatternElement],
+        root_module: &ra_hir::Module,
         code: &SyntaxNode,
     ) -> Result<SyntaxNode, Error> {
         let debug_active =
@@ -585,10 +759,12 @@ impl MatchFinder {
         if debug_active {
             print_debug_start(search, code);
         }
-        if let Some(mut match_state) = MatchState::get_match(debug_active, &search, &code) {
+        if let Some(mut match_state) =
+            MatchState::get_match(debug_active, &search, &code, &self.sema, root_module)
+        {
             // Continue searching in each of our placeholders and make replacements there as well.
             for placeholder_value in match_state.placeholder_values.values_mut() {
-                *placeholder_value = self.apply(search, replace, placeholder_value)?;
+                *placeholder_value = self.apply(search, replace, root_module, placeholder_value)?;
             }
             return match_state.apply_placeholders(replace);
         }
@@ -597,7 +773,7 @@ impl MatchFinder {
         for child_node_or_token in code.children_with_tokens() {
             match child_node_or_token {
                 SyntaxElement::Node(child) => {
-                    let replacement = self.apply(search, replace, &child)?;
+                    let replacement = self.apply(search, replace, root_module, &child)?;
                     if replacement.parent().is_none() {
                         // If the returned child has no parent, then it's not the child that we passed in.
                         changed = true;
@@ -619,12 +795,14 @@ impl MatchFinder {
         }
     }
 
-    fn apply_str(&self, search: &str, replace: &str, code: &str) -> Result<String, Error> {
+    fn apply_str(&self, search: &str, replace: &str, file_id: FileId) -> Result<String, Error> {
         let search = parse_pattern(search, true)?;
         let replace = parse_pattern(replace, false)?;
         validate_rule(&search, &replace)?;
+        let file = self.sema.parse(file_id);
+        let code = file.syntax();
         Ok(self
-            .apply(&search, &replace, SourceFile::parse(code).tree().syntax())?
+            .apply(&search, &replace, &self.root_module(code)?, code)?
             .text()
             .to_string())
     }
@@ -651,18 +829,22 @@ struct RerastConfig {
     debug_snippet: Option<String>,
 }
 
+fn single_file(code: &str) -> (ra_ide_db::RootDatabase, FileId) {
+    use ra_db::fixture::WithFixture;
+    ra_ide_db::RootDatabase::with_single_file(code)
+}
+
 fn main() -> Result<(), Error> {
     let config: RerastConfig = argh::from_env();
-    let match_finder = MatchFinder {
-        debug_snippet: config.debug_snippet,
-    };
+    let (db, file_id) = single_file(&config.code);
+    let match_finder = MatchFinder::new(config.debug_snippet, &db);
     if let Some(replace) = &config.replace {
         println!(
             "OUT: {}",
-            match_finder.apply_str(&config.search, replace, &config.code)?
+            match_finder.apply_str(&config.search, replace, file_id)?
         );
     } else {
-        let matches = match_finder.find_match_str(&config.search, &config.code)?;
+        let matches = match_finder.find_match_str(&config.search, file_id)?;
         if matches.is_empty() {
             println!("No match found");
         } else {
@@ -680,8 +862,9 @@ mod tests {
     use super::*;
 
     fn find(pattern: &str, code: &str) -> Vec<String> {
-        let match_finder = MatchFinder::default();
-        match_finder.find_match_str(pattern, code).unwrap()
+        let (db, file_id) = single_file(code);
+        let match_finder = MatchFinder::new(None, &db);
+        match_finder.find_match_str(pattern, file_id).unwrap()
     }
 
     macro_rules! assert_matches {
@@ -812,16 +995,42 @@ mod tests {
     }
 
     #[test]
+    fn expression_type_constraints() {
+        let code = r#"
+            mod m1 {
+                pub mod m2 {
+                    #[derive(Clone)]
+                    struct Foo {}
+                }
+                fn f1() -> m2::Foo {
+                    m2::Foo {}
+                }
+            }
+            fn f2() {
+                String::new().clone();
+                true.clone();
+                m1::f1().clone();
+            }
+            "#;
+        assert_matches!("${a:type(m1::m2::Foo)}.clone()", code, ["m1::f1().clone()"]);
+        assert_no_match!("${a:type(m1::m2::Bar)}.clone()", code);
+        assert_matches!("${a:type(bool)}.clone()", code, ["true.clone()"]);
+    }
+
+    #[test]
     fn invalid_placeholder() {
         assert_eq!(
-            MatchFinder::default().find_match_str("($)", "fn foo() {}"),
-            Err(Error::message("Missing placeholder name".to_owned()))
+            parse_pattern("($)", true).err(),
+            Some(Error::new(
+                "Placeholders should either be $name or ${name:constraints}"
+            ))
         );
     }
 
     fn apply(search: &str, replace: &str, code: &str) -> Result<String, Error> {
-        let match_finder = MatchFinder::default();
-        match_finder.apply_str(search, replace, code)
+        let (db, file_id) = single_file(code);
+        let match_finder = MatchFinder::new(None, &db);
+        match_finder.apply_str(search, replace, file_id)
     }
 
     #[test]
@@ -915,14 +1124,14 @@ mod tests {
     fn undefined_placeholder_in_replacement() {
         assert_eq!(
             apply("42", "$a", "fn f() ->i32 {42}"),
-            Err(Error::message(
-                "Replacement contains undefined placeholders: $a".to_owned()
+            Err(Error::new(
+                "Replacement contains undefined placeholders: $a"
             ))
         );
         assert_eq!(
             apply("43", "$a", "fn f() ->i32 {42}"),
-            Err(Error::message(
-                "Replacement contains undefined placeholders: $a".to_owned()
+            Err(Error::new(
+                "Replacement contains undefined placeholders: $a"
             ))
         );
     }
@@ -931,7 +1140,7 @@ mod tests {
     fn duplicate_placeholders() {
         assert_eq!(
             apply("foo($a, $a)", "42", "fn f() {}"),
-            Err(Error::message("Duplicate placeholder: $a".to_owned()))
+            Err(Error::new("Duplicate placeholder: $a"))
         );
     }
 }
