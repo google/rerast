@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use argh::FromArgs;
-use ra_syntax::ast::{AstNode, SourceFile};
+use ra_syntax::ast::{self, AstNode, SourceFile};
 use ra_syntax::{NodeOrToken, SmolStr, SyntaxElement, SyntaxKind, SyntaxNode};
 use rowan;
 use std::collections::HashMap;
@@ -264,12 +264,74 @@ impl MatchState {
         if code.kind() == SyntaxKind::TOKEN_TREE {
             self.attempt_match_token_tree(pattern, code)?;
         } else {
-            for child in code.children_with_tokens() {
-                match child {
-                    SyntaxElement::Node(c) => self.attempt_match_node(pattern, &c)?,
-                    SyntaxElement::Token(c) => self.attempt_match_token(pattern, &c)?,
+            if code.kind() == SyntaxKind::RECORD_FIELD_LIST {
+                self.attempt_match_record_field_list(pattern, &code)?;
+            } else {
+                self.attempt_match_node_children(pattern, &code)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn attempt_match_node_children(
+        &mut self,
+        pattern: &mut PatternIterator,
+        code: &SyntaxNode,
+    ) -> Result<(), MatchFailed> {
+        for child in code.children_with_tokens() {
+            match child {
+                SyntaxElement::Node(c) => self.attempt_match_node(pattern, &c)?,
+                SyntaxElement::Token(c) => self.attempt_match_token(pattern, &c)?,
+            }
+        }
+        Ok(())
+    }
+
+    // We want to allow the records to match in any order, so we have special matching logic for
+    // them.
+    fn attempt_match_record_field_list(
+        &mut self,
+        pattern: &mut PatternIterator,
+        code: &SyntaxNode,
+    ) -> Result<(), MatchFailed> {
+        let pattern_start = pattern.clone();
+        // Build a map keyed by field name.
+        let mut fields_by_name = HashMap::new();
+        for child in code.children() {
+            if let Some(record) = ast::RecordField::cast(child.clone()) {
+                if let Some(name) = record.field_name() {
+                    fields_by_name.insert(name.text().clone(), child.clone());
                 }
             }
+        }
+        for child in code.children_with_tokens() {
+            match child {
+                SyntaxElement::Node(_) => match pattern.peek() {
+                    Some(PatternElement::Token(p)) => {
+                        if let Some(c) = fields_by_name.remove(&p.text) {
+                            self.attempt_match_node(pattern, &c)?;
+                        }
+                    }
+                    Some(PatternElement::Placeholder(_)) => {
+                        // If the pattern is using placeholders for field names then order
+                        // independence doesn't make sense. Fall back to regular ordered matching.
+                        *pattern = pattern_start;
+                        return self.attempt_match_node_children(pattern, code);
+                    }
+                    None => {
+                        // Nothing to do, we'll fail the match below due to unmatched fields.
+                    }
+                },
+                SyntaxElement::Token(c) => self.attempt_match_token(pattern, &c)?,
+            }
+        }
+        if let Some(unmatched_fields) = fields_by_name.keys().next() {
+            fail_match!(
+                self,
+                "{} field(s) of a record literal failed to match, starting with {}",
+                fields_by_name.len(),
+                unmatched_fields
+            );
         }
         Ok(())
     }
@@ -664,6 +726,22 @@ mod tests {
             "fn f() {Foo {bar: 1, baz: 2}}",
             ["Foo {bar: 1, baz: 2}"]
         );
+        assert_matches!("Foo {}", "fn f() {Foo {}}", ["Foo {}"]);
+    }
+
+    #[test]
+    fn match_reordered_struct_instantiation() {
+        assert_matches!(
+            "Foo {aa: 1, b: 2, ccc: 3}",
+            "fn f() {Foo {b: 2, ccc: 3, aa: 1}}",
+            ["Foo {b: 2, ccc: 3, aa: 1}"]
+        );
+        assert_no_match!("Foo {a: 1}", "fn f() {Foo {b: 1}}");
+        assert_no_match!("Foo {a: 1}", "fn f() {Foo {a: 2}}");
+        assert_no_match!("Foo {a: 1, b: 2}", "fn f() {Foo {a: 1}}");
+        assert_no_match!("Foo {a: 1, b: 2}", "fn f() {Foo {b: 2}}");
+        assert_no_match!("Foo {a: 1, }", "fn f() {Foo {a: 1, b: 2}}");
+        assert_no_match!("Foo {a: 1, z: 9}", "fn f() {Foo {a: 1}}");
     }
 
     #[test]
