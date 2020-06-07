@@ -367,6 +367,18 @@ impl MatchState {
         if code.kind().is_trivia() {
             return Ok(());
         }
+        if let Some(PatternElement::Token(p)) = pattern.peek() {
+            // If the code has a comma and the pattern is about to close something, then accept the
+            // comma without advancing the pattern. i.e. ignore trailing commas.
+            if code.kind() == SyntaxKind::COMMA && is_closing_token(p.kind) {
+                return Ok(());
+            }
+            // Conversely, if the pattern has a comma and the code doesn't, skip that part of the
+            // pattern and continue to match the code.
+            if p.kind == SyntaxKind::COMMA && is_closing_token(code.kind()) {
+                pattern.next();
+            }
+        }
         let code_text = code.text().to_string();
         // A token in the syntax tree might correspond to multiple tokens in the pattern. For
         // example, in the syntax tree `->` would be a single token of type THIN_ARROW, whereas in
@@ -509,6 +521,10 @@ impl MatchState {
         // preserves all text, even on error!
         Ok(SourceFile::parse(&out).tree().syntax().clone())
     }
+}
+
+fn is_closing_token(kind: SyntaxKind) -> bool {
+    kind == SyntaxKind::R_PAREN || kind == SyntaxKind::R_CURLY || kind == SyntaxKind::R_BRACK
 }
 
 #[derive(Debug)]
@@ -724,6 +740,18 @@ mod tests {
         assert_no_match!("foo($a, $b, $c)", code);
         assert_no_match!("foo($a)", code);
         assert_matches!("bar($a, $b)", code, ["bar(40, 2)"]);
+    }
+
+    // Trailing commas in the code should be ignored.
+    #[test]
+    fn match_with_trailing_commas() {
+        // Code has comma, pattern doesn't.
+        assert_matches!("foo($a, $b)", "fn f() {foo(1, 2,);}", ["foo(1, 2,)"]);
+        assert_matches!("Foo{$a, $b}", "fn f() {Foo{1, 2,};}", ["Foo{1, 2,}"]);
+
+        // Pattern has comma, code doesn't.
+        assert_matches!("foo($a, $b,)", "fn f() {foo(1, 2);}", ["foo(1, 2)"]);
+        assert_matches!("Foo{$a, $b,}", "fn f() {Foo{1, 2};}", ["Foo{1, 2}"]);
     }
 
     #[test]
