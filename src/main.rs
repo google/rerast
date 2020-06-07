@@ -128,10 +128,9 @@ fn validate_rule(pattern: &[PatternElement], replacement: &[PatternElement]) -> 
 
 struct Placeholder {
     ident: SmolStr,
-    // The next token after this placeholder in the pattern, if any. When
-    // matching, we then consume the outermost node that is followed by this
-    // token. This allows `$a: 1` to match `foo: 1` instead of the placeholder
-    // consuming the whole thing then failing when we get to the `:`
+    // The next token after this placeholder in the pattern, if any. When matching, we then consume
+    // the outermost node that is followed by this token. This allows `$a: 1` to match `foo: 1`
+    // instead of the placeholder consuming the whole thing then failing when we get to the `:`
     terminator: Option<Token>,
 }
 
@@ -139,8 +138,12 @@ impl Placeholder {
     // Returns whether this placeholder should consume `code`.
     fn can_consume(&self, code: &SyntaxNode) -> bool {
         if let Some(SyntaxElement::Token(_)) = code.first_child_or_token() {
-            // If code starts with a token not another node, then we have no
-            // choice but to consume the current node.
+            // If code starts with a token not another node, then we have no choice but to consume
+            // the current node. Note, this isn't needed for correctness, but helps when reporting
+            // the reason why we didn't match. e.g. if the code is `(),` and the pattern is `$a:`
+            // then we want to report that `,` didn't match `:` rather than having the placeholder
+            // try to match a token (which normally can't happen) then report that `)` didn't match
+            // `:`.
             return true;
         }
         // Figure out what the next token will be if we consume `code`.
@@ -149,6 +152,8 @@ impl Placeholder {
             Some(SyntaxElement::Token(t)) => Some(t),
             None => None,
         };
+        // If either there's no next token in the pattern or there's no next token in the code then
+        // just consume the current node.
         match (&next_token, &self.terminator) {
             (None, _) => true,
             (_, None) => true,
@@ -157,14 +162,12 @@ impl Placeholder {
     }
 }
 
-// An "error" indicating that matching failed. Use the fail_match! macro to
-// create and return this.
+// An "error" indicating that matching failed. Use the fail_match! macro to create and return this.
 struct MatchFailed {}
 
-/// Fails the current match attempt. If we're currently attempting to match some
-/// code that we thought we were going to match, as indicated by the
-/// --debug-snippet flag, then print the reason why we didn't match before
-/// failing.
+/// Fails the current match attempt. If we're currently attempting to match some code that we
+/// thought we were going to match, as indicated by the --debug-snippet flag, then print the reason
+/// why we didn't match before failing.
 macro_rules! fail_match {
     ($s:expr, $e:expr) => {
         if $s.debug_active {
@@ -281,9 +284,9 @@ impl MatchState {
             return Ok(());
         }
         let code_text = code.text().to_string();
-        // A token in the syntax tree might correspond to multiple tokens in the
-        // pattern. For example, in the syntax tree `->` would be a single token
-        // of type THIN_ARROW, whereas in the pattern it will be MINUS, R_ANGLE.
+        // A token in the syntax tree might correspond to multiple tokens in the pattern. For
+        // example, in the syntax tree `->` would be a single token of type THIN_ARROW, whereas in
+        // the pattern it will be MINUS, R_ANGLE.
         let mut code_remaining = code_text.as_str();
         while !code_remaining.is_empty() {
             match pattern.next() {
@@ -315,9 +318,9 @@ impl MatchState {
         Ok(())
     }
 
-    // Placeholders have different semantics within token trees. Outside of
-    // token trees, a placeholder can only match a single AST node, whereas in a
-    // token tree it can match a sequence of tokens.
+    // Placeholders have different semantics within token trees. Outside of token trees, a
+    // placeholder can only match a single AST node, whereas in a token tree it can match a sequence
+    // of tokens.
     fn attempt_match_token_tree(
         &mut self,
         pattern: &mut PatternIterator,
@@ -335,9 +338,8 @@ impl MatchState {
                     };
                     let mut matched = Vec::new();
                     matched.push(to_green_node_or_token(&child));
-                    // Read code tokens util we reach one equal to the next
-                    // token from our pattern or we reach the end of the token
-                    // tree.
+                    // Read code tokens util we reach one equal to the next token from our pattern
+                    // or we reach the end of the token tree.
                     while let Some(next) = children.next() {
                         match &next {
                             SyntaxElement::Token(t) => {
@@ -418,9 +420,9 @@ impl MatchState {
                 }
             }
         }
-        // This almost certainly won't parse as a SourceFile, but all we need is
-        // to get out a SyntaxNode that can later on be converted to text, so it
-        // doesn't matter. Parsing preserves all text, even on error!
+        // This almost certainly won't parse as a SourceFile, but all we need is to get out a
+        // SyntaxNode that can later on be converted to text, so it doesn't matter. Parsing
+        // preserves all text, even on error!
         Ok(SourceFile::parse(&out).tree().syntax().clone())
     }
 }
@@ -539,8 +541,8 @@ struct RerastConfig {
     #[argh(option)]
     code: String,
 
-    /// a snippet of code that you expect to match. When exactly this snippet is
-    /// encountered, debug information will be printed during matching.
+    /// a snippet of code that you expect to match. When exactly this snippet is encountered, debug
+    /// information will be printed during matching.
     #[argh(option)]
     debug_snippet: Option<String>,
 }
@@ -615,6 +617,15 @@ mod tests {
     }
 
     #[test]
+    fn match_fn_definition() {
+        assert_matches!(
+            "fn $a($b) $c",
+            "fn f(a: i32) {bar()}",
+            ["fn f(a: i32) {bar()}"]
+        );
+    }
+
+    #[test]
     fn match_expr() {
         let code = "fn f() -> i32 {foo(40 + 2, 42)}";
         assert_matches!("foo($a, $b)", code, ["foo(40 + 2, 42)"]);
@@ -645,9 +656,9 @@ mod tests {
             "fn f() {Foo {bar: 1, baz: 2}}",
             ["Foo {bar: 1, baz: 2}"]
         );
-        // Now with placeholders for all parts of the struct. If we're not
-        // careful here, then $a will consume the whole record field (`bar: 1`)
-        // then the `:` in the pattern will fail to match.
+        // Now with placeholders for all parts of the struct. If we're not careful here, then $a
+        // will consume the whole record field (`bar: 1`) then the `:` in the pattern will fail to
+        // match.
         assert_matches!(
             "Foo {$a: $b, $c: $d}",
             "fn f() {Foo {bar: 1, baz: 2}}",
@@ -742,10 +753,9 @@ mod tests {
         Ok(())
     }
 
-    // Although matching macros is supported, matching within macros isn't. For
-    // patterns that don't start or end with a placeholder (like this one) it
-    // wouldn't be too hard to implement, but for patterns like $a.foo(), we
-    // wouldn't know where to start matching.
+    // Although matching macros is supported, matching within macros isn't. For patterns that don't
+    // start or end with a placeholder (like this one) it wouldn't be too hard to implement, but for
+    // patterns like $a.foo(), we wouldn't know where to start matching.
     #[test]
     #[ignore]
     fn replace_nested_macro_invocations() -> Result<(), Error> {
