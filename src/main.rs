@@ -14,7 +14,7 @@
 
 use argh::FromArgs;
 use ra_syntax::ast::{AstNode, SourceFile};
-use ra_syntax::{NodeOrToken, SmolStr, SyntaxKind, SyntaxNode};
+use ra_syntax::{NodeOrToken, SmolStr, SyntaxElement, SyntaxKind, SyntaxNode};
 use rowan;
 use std::collections::HashMap;
 use std::fmt;
@@ -41,7 +41,7 @@ macro_rules! bail {
     ($fmt:expr, $($arg:tt)+) => {return Err($crate::Error::message(format!($fmt, $($arg)+)))}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Token {
     kind: SyntaxKind,
     text: SmolStr,
@@ -74,7 +74,10 @@ fn parse_pattern(pattern_str: &str, remove_whitespace: bool) -> Result<Vec<Patte
         let text = SmolStr::new(&pattern_str[start..start + token_len]);
         if dollar {
             if token.kind == SyntaxKind::IDENT {
-                result.push(PatternElement::Placeholder(Placeholder { ident: text }));
+                result.push(PatternElement::Placeholder(Placeholder {
+                    ident: text,
+                    terminator: None,
+                }));
                 dollar = false;
             } else {
                 bail!("Missing placeholder name");
@@ -82,10 +85,14 @@ fn parse_pattern(pattern_str: &str, remove_whitespace: bool) -> Result<Vec<Patte
         } else if text.as_str() == "$" {
             dollar = true;
         } else if !remove_whitespace || token.kind != SyntaxKind::WHITESPACE {
-            result.push(PatternElement::Token(Token {
+            let token = Token {
                 kind: token.kind,
                 text,
-            }));
+            };
+            if let Some(PatternElement::Placeholder(last_placeholder)) = result.last_mut() {
+                last_placeholder.terminator = Some(token.clone());
+            }
+            result.push(PatternElement::Token(token));
         }
         start += token_len;
     }
@@ -121,6 +128,33 @@ fn validate_rule(pattern: &[PatternElement], replacement: &[PatternElement]) -> 
 
 struct Placeholder {
     ident: SmolStr,
+    // The next token after this placeholder in the pattern, if any. When
+    // matching, we then consume the outermost node that is followed by this
+    // token. This allows `$a: 1` to match `foo: 1` instead of the placeholder
+    // consuming the whole thing then failing when we get to the `:`
+    terminator: Option<Token>,
+}
+
+impl Placeholder {
+    // Returns whether this placeholder should consume `code`.
+    fn can_consume(&self, code: &SyntaxNode) -> bool {
+        if let Some(SyntaxElement::Token(_)) = code.first_child_or_token() {
+            // If code starts with a token not another node, then we have no
+            // choice but to consume the current node.
+            return true;
+        }
+        // Figure out what the next token will be if we consume `code`.
+        let next_token = match code.next_sibling_or_token() {
+            Some(SyntaxElement::Node(next_node)) => next_node.first_token(),
+            Some(SyntaxElement::Token(t)) => Some(t),
+            None => None,
+        };
+        match (&next_token, &self.terminator) {
+            (None, _) => true,
+            (_, None) => true,
+            (Some(next), Some(terminator)) => *next.text() == terminator.text,
+        }
+    }
 }
 
 // An "error" indicating that matching failed. Use the fail_match! macro to
@@ -154,10 +188,10 @@ fn print_tree(n: &SyntaxNode, depth: usize) {
     println!("{}{:?}", indent(depth), n.kind());
     for child_node_or_token in n.children_with_tokens() {
         match child_node_or_token {
-            rowan::NodeOrToken::Node(child) => {
+            SyntaxElement::Node(child) => {
                 print_tree(&child, depth + 2);
             }
-            rowan::NodeOrToken::Token(token) => {
+            SyntaxElement::Token(token) => {
                 println!("{}{:?}", indent(depth + 2), token);
             }
         }
@@ -174,10 +208,10 @@ fn print_debug_start(search: &[PatternElement], code: &SyntaxNode) {
 // Converts a RA NodeOrToken to a green NodeOrToken.
 fn to_green_node_or_token(
     n: &ra_syntax::NodeOrToken<SyntaxNode, ra_syntax::SyntaxToken>,
-) -> rowan::NodeOrToken<rowan::GreenNode, rowan::GreenToken> {
+) -> NodeOrToken<rowan::GreenNode, rowan::GreenToken> {
     match n {
-        NodeOrToken::Node(n) => rowan::NodeOrToken::Node(n.green().clone()),
-        NodeOrToken::Token(t) => rowan::NodeOrToken::Token(t.green().clone()),
+        SyntaxElement::Node(n) => NodeOrToken::Node(n.green().clone()),
+        SyntaxElement::Token(t) => NodeOrToken::Token(t.green().clone()),
     }
 }
 
@@ -217,18 +251,20 @@ impl MatchState {
     ) -> Result<(), MatchFailed> {
         // Handle placeholders.
         if let Some(PatternElement::Placeholder(placeholder)) = pattern.peek() {
-            self.placeholder_values
-                .insert(placeholder.ident.clone(), code.clone());
-            pattern.next();
-            return Ok(());
+            if placeholder.can_consume(code) {
+                self.placeholder_values
+                    .insert(placeholder.ident.clone(), code.clone());
+                pattern.next();
+                return Ok(());
+            }
         }
         if code.kind() == SyntaxKind::TOKEN_TREE {
             self.attempt_match_token_tree(pattern, code)?;
         } else {
             for child in code.children_with_tokens() {
                 match child {
-                    NodeOrToken::Node(c) => self.attempt_match_node(pattern, &c)?,
-                    NodeOrToken::Token(c) => self.attempt_match_token(pattern, &c)?,
+                    SyntaxElement::Node(c) => self.attempt_match_node(pattern, &c)?,
+                    SyntaxElement::Token(c) => self.attempt_match_token(pattern, &c)?,
                 }
             }
         }
@@ -304,13 +340,13 @@ impl MatchState {
                     // tree.
                     while let Some(next) = children.next() {
                         match &next {
-                            NodeOrToken::Token(t) => {
+                            SyntaxElement::Token(t) => {
                                 if Some(t.to_string()) == next_pattern_token {
                                     pattern.next();
                                     break;
                                 }
                             }
-                            NodeOrToken::Node(n) => {
+                            SyntaxElement::Node(n) => {
                                 if let Some(first_token) = n.first_token() {
                                     if Some(first_token.to_string()) == next_pattern_token {
                                         // We have a subtree that starts with the next token in our pattern.
@@ -331,7 +367,7 @@ impl MatchState {
             }
             // Match literal (non-placeholder) tokens.
             match child {
-                NodeOrToken::Token(token) => {
+                SyntaxElement::Token(token) => {
                     // Ignore whitespace and comments.
                     if token.kind().is_trivia() {
                         continue;
@@ -356,7 +392,7 @@ impl MatchState {
                             token);
                     }
                 }
-                NodeOrToken::Node(node) => {
+                SyntaxElement::Node(node) => {
                     if node.kind() != SyntaxKind::TOKEN_TREE {
                         fail_match!(self, "Found unexpected node inside token tree {:?}", node);
                     }
@@ -454,16 +490,16 @@ impl MatchFinder {
         let mut changed = false;
         for child_node_or_token in code.children_with_tokens() {
             match child_node_or_token {
-                rowan::NodeOrToken::Node(child) => {
+                SyntaxElement::Node(child) => {
                     let replacement = self.apply(search, replace, &child)?;
                     if replacement.parent().is_none() {
                         // If the returned child has no parent, then it's not the child that we passed in.
                         changed = true;
                     }
-                    child_replacements.push(rowan::NodeOrToken::Node(replacement.green().clone()));
+                    child_replacements.push(NodeOrToken::Node(replacement.green().clone()));
                 }
-                rowan::NodeOrToken::Token(token) => {
-                    child_replacements.push(rowan::NodeOrToken::Token(token.green().clone()))
+                SyntaxElement::Token(token) => {
+                    child_replacements.push(NodeOrToken::Token(token.green().clone()))
                 }
             }
         }
@@ -565,6 +601,7 @@ mod tests {
     #[test]
     fn ignores_whitespace() {
         assert_matches!("1+2", "fn f() -> i32 {1  +  2}", ["1  +  2"]);
+        assert_matches!("1 + 2", "fn f() -> i32 {1+2}", ["1+2"]);
     }
 
     #[test]
@@ -599,6 +636,23 @@ mod tests {
         assert_matches!("i32", "fn f() -> i32 {1  +  2}", ["i32"]);
         assert_matches!("Option<$a>", "fn f() -> Option<i32> {42}", ["Option<i32>"]);
         assert_no_match!("Option<$a>", "fn f() -> Result<i32, ()> {42}");
+    }
+
+    #[test]
+    fn match_struct_instantiation() {
+        assert_matches!(
+            "Foo {bar: 1, baz: 2}",
+            "fn f() {Foo {bar: 1, baz: 2}}",
+            ["Foo {bar: 1, baz: 2}"]
+        );
+        // Now with placeholders for all parts of the struct. If we're not
+        // careful here, then $a will consume the whole record field (`bar: 1`)
+        // then the `:` in the pattern will fail to match.
+        assert_matches!(
+            "Foo {$a: $b, $c: $d}",
+            "fn f() {Foo {bar: 1, baz: 2}}",
+            ["Foo {bar: 1, baz: 2}"]
+        );
     }
 
     #[test]
@@ -684,6 +738,20 @@ mod tests {
                 "fn f1() {foo!(abc(def() + 2));}"
             )?,
             "fn f1() {foo(def() + 2, abc);}"
+        );
+        Ok(())
+    }
+
+    // Although matching macros is supported, matching within macros isn't. For
+    // patterns that don't start or end with a placeholder (like this one) it
+    // wouldn't be too hard to implement, but for patterns like $a.foo(), we
+    // wouldn't know where to start matching.
+    #[test]
+    #[ignore]
+    fn replace_nested_macro_invocations() -> Result<(), Error> {
+        assert_eq!(
+            apply("try!($a)", "$a?", "fn f1() {try!(bar(try!(foo())));")?,
+            "fn f1() {bar(foo()?)?;}"
         );
         Ok(())
     }
