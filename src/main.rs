@@ -163,23 +163,26 @@ impl Placeholder {
 }
 
 // An "error" indicating that matching failed. Use the fail_match! macro to create and return this.
-struct MatchFailed {}
+struct MatchFailed {
+    // Only present when --debug-snippet is set.
+    reason: Option<String>,
+}
 
 /// Fails the current match attempt. If we're currently attempting to match some code that we
-/// thought we were going to match, as indicated by the --debug-snippet flag, then print the reason
-/// why we didn't match before failing.
+/// thought we were going to match, as indicated by the --debug-snippet flag, then populate the
+/// reason field.
 macro_rules! fail_match {
     ($s:expr, $e:expr) => {
         if $s.debug_active {
-            println!("{}", $e);
+            return Err(MatchFailed { reason: Some(format!("{}", $e)) });
         }
-        return Err(MatchFailed {})
+        return Err(MatchFailed { reason: None })
     };
     ($s:expr, $fmt:expr, $($arg:tt)+) => {
         if $s.debug_active {
-            println!($fmt, $($arg)+);
+            return Err(MatchFailed { reason: Some(format!($fmt, $($arg)+)) });
         }
-        return Err(MatchFailed {})
+        return Err(MatchFailed { reason: None })
     };
 }
 
@@ -247,6 +250,26 @@ impl MatchState {
         Ok(match_state)
     }
 
+    fn get_match(
+        debug_active: bool,
+        search: &[PatternElement],
+        code: &SyntaxNode,
+    ) -> Option<MatchState> {
+        match Self::matches(debug_active, search, code) {
+            Ok(state) => Some(state),
+            Err(match_failed) => {
+                if debug_active {
+                    if let Some(reason) = match_failed.reason {
+                        println!("{}", reason);
+                    } else {
+                        println!("Match failed, but no reason was given");
+                    }
+                }
+                None
+            }
+        }
+    }
+
     fn attempt_match_node(
         &mut self,
         pattern: &mut PatternIterator,
@@ -263,13 +286,12 @@ impl MatchState {
         }
         if code.kind() == SyntaxKind::TOKEN_TREE {
             self.attempt_match_token_tree(pattern, code)?;
+        } else if code.kind() == SyntaxKind::RECORD_FIELD_LIST {
+            self.attempt_match_record_field_list(pattern, &code)?;
         } else {
-            if code.kind() == SyntaxKind::RECORD_FIELD_LIST {
-                self.attempt_match_record_field_list(pattern, &code)?;
-            } else {
-                self.attempt_match_node_children(pattern, &code)?;
-            }
+            self.attempt_match_node_children(pattern, &code)?;
         }
+
         Ok(())
     }
 
@@ -508,7 +530,7 @@ impl MatchFinder {
             if debug_active {
                 print_debug_start(search, &c);
             }
-            if let Ok(match_state) = MatchState::matches(debug_active, &search, &c) {
+            if let Some(match_state) = MatchState::get_match(debug_active, &search, &c) {
                 matches.push(Match {
                     matched_node: c.clone(),
                     placeholder_values: match_state.placeholder_values,
@@ -543,7 +565,7 @@ impl MatchFinder {
         if debug_active {
             print_debug_start(search, code);
         }
-        if let Ok(mut match_state) = MatchState::matches(debug_active, &search, &code) {
+        if let Some(mut match_state) = MatchState::get_match(debug_active, &search, &code) {
             // Continue searching in each of our placeholders and make replacements there as well.
             for placeholder_value in match_state.placeholder_values.values_mut() {
                 *placeholder_value = self.apply(search, replace, placeholder_value)?;
