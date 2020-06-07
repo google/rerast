@@ -443,7 +443,11 @@ impl MatchFinder {
         if debug_active {
             print_debug_start(search, code);
         }
-        if let Ok(match_state) = MatchState::matches(debug_active, &search, &code) {
+        if let Ok(mut match_state) = MatchState::matches(debug_active, &search, &code) {
+            // Continue searching in each of our placeholders and make replacements there as well.
+            for placeholder_value in match_state.placeholder_values.values_mut() {
+                *placeholder_value = self.apply(search, replace, placeholder_value)?;
+            }
             return match_state.apply_placeholders(replace);
         }
         let mut child_replacements = Vec::new();
@@ -642,6 +646,15 @@ mod tests {
     }
 
     #[test]
+    fn replace_nested_function_calls() -> Result<(), Error> {
+        assert_eq!(
+            apply("foo($a)", "bar($a)", "fn f1() {foo(foo(42))}")?,
+            "fn f1() {bar(bar(42))}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn replace_type() -> Result<(), Error> {
         assert_eq!(
             apply(
@@ -653,6 +666,7 @@ mod tests {
         );
         Ok(())
     }
+
     #[test]
     fn replace_macro_invocations() -> Result<(), Error> {
         assert_eq!(
