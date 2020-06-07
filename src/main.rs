@@ -16,7 +16,7 @@ use argh::FromArgs;
 use ra_syntax::ast::{self, AstNode, SourceFile};
 use ra_syntax::{NodeOrToken, SmolStr, SyntaxElement, SyntaxKind, SyntaxNode};
 use rowan;
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::fmt;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -65,6 +65,7 @@ fn parse_pattern(pattern_str: &str, remove_whitespace: bool) -> Result<Vec<Patte
     let mut result = Vec::new();
     let mut start = 0;
     let (tokens, errors) = ra_syntax::tokenize(pattern_str);
+    let mut placeholder_names = HashSet::new();
     if let Some(first_error) = errors.first() {
         bail!("Failed to parse pattern: {}", first_error);
     }
@@ -74,6 +75,9 @@ fn parse_pattern(pattern_str: &str, remove_whitespace: bool) -> Result<Vec<Patte
         let text = SmolStr::new(&pattern_str[start..start + token_len]);
         if dollar {
             if token.kind == SyntaxKind::IDENT {
+                if !placeholder_names.insert(text.clone()) {
+                    bail!("Duplicate placeholder: ${}", text);
+                }
                 result.push(PatternElement::Placeholder(Placeholder {
                     ident: text,
                     terminator: None,
@@ -861,6 +865,19 @@ mod tests {
     }
 
     #[test]
+    fn replace_struct_init() -> Result<(), Error> {
+        assert_eq!(
+            apply(
+                "Foo {a: $a, b: $b}",
+                "Foo::new($a, $b)",
+                "fn f1() {Foo{b: 1, a: 2}}"
+            )?,
+            "fn f1() {Foo::new(2, 1)}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn replace_macro_invocations() -> Result<(), Error> {
         assert_eq!(
             apply(
@@ -907,6 +924,14 @@ mod tests {
             Err(Error::message(
                 "Replacement contains undefined placeholders: $a".to_owned()
             ))
+        );
+    }
+
+    #[test]
+    fn duplicate_placeholders() {
+        assert_eq!(
+            apply("foo($a, $a)", "42", "fn f() {}"),
+            Err(Error::message("Duplicate placeholder: $a".to_owned()))
         );
     }
 }
