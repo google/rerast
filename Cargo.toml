@@ -10,4 +10,4 @@ ra_syntax = { path = "../../src/rust-analyzer/crates/ra_syntax" }
 ra_db = { path = "../../src/rust-analyzer/crates/ra_db" }
 ra_ide_db = { path = "../../src/rust-analyzer/crates/ra_ide_db" }
 ra_hir = { path = "../../src/rust-analyzer/crates/ra_hir" }
-rowan = "0.10.0"
+ra_text_edit = { path = "../../src/rust-analyzer/crates/ra_text_edit" }

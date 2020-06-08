@@ -13,10 +13,11 @@
 // limitations under the License.
 
 use argh::FromArgs;
+use fmt::Display;
 use ra_db::FileId;
-use ra_syntax::ast::{self, AstNode, SourceFile};
-use ra_syntax::{NodeOrToken, SmolStr, SyntaxElement, SyntaxKind, SyntaxNode};
-use rowan;
+use ra_syntax::ast::{self, AstNode};
+use ra_syntax::{SmolStr, SyntaxElement, SyntaxKind, SyntaxNode, TextRange, TextSize};
+use ra_text_edit::TextEdit;
 use std::collections::{HashMap, HashSet};
 use std::{cell::Cell, fmt};
 
@@ -53,6 +54,15 @@ struct Token {
 enum PatternElement {
     Token(Token),
     Placeholder(Placeholder),
+}
+
+impl Display for PatternElement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PatternElement::Token(t) => write!(f, "{}", t.text),
+            PatternElement::Placeholder(p) => write!(f, "${}", p.ident),
+        }
+    }
 }
 
 impl fmt::Debug for PatternElement {
@@ -199,6 +209,9 @@ fn validate_rule(pattern: &[PatternElement], replacement: &[PatternElement]) -> 
             if !defined_placeholders.contains(&placeholder.ident) {
                 undefined.push(format!("${}", placeholder.ident));
             }
+            if !placeholder.constraints.is_empty() {
+                bail!("Replacement placeholders cannot have constraints");
+            }
         }
     }
     if !undefined.is_empty() {
@@ -223,40 +236,16 @@ enum Constraint {
     ExprType(Vec<SmolStr>),
 }
 
-impl Placeholder {
-    // Returns whether this placeholder should consume `code`.
-    fn can_consume(&self, code: &SyntaxNode) -> bool {
-        if let Some(SyntaxElement::Token(_)) = code.first_child_or_token() {
-            // If code starts with a token not another node, then we have no choice but to consume
-            // the current node. Note, this isn't needed for correctness, but helps when reporting
-            // the reason why we didn't match. e.g. if the code is `(),` and the pattern is `$a:`
-            // then we want to report that `,` didn't match `:` rather than having the placeholder
-            // try to match a token (which normally can't happen) then report that `)` didn't match
-            // `:`.
-            return true;
-        }
-        // Figure out what the next token will be if we consume `code`.
-        let next_token = match code.next_sibling_or_token() {
-            Some(SyntaxElement::Node(next_node)) => next_node.first_token(),
-            Some(SyntaxElement::Token(t)) => Some(t),
-            None => None,
-        };
-        // If either there's no next token in the pattern or there's no next token in the code then
-        // just consume the current node.
-        match (&next_token, &self.terminator) {
-            (None, _) => true,
-            (_, None) => true,
-            (Some(next), Some(terminator)) => *next.text() == terminator.text,
-        }
-    }
-}
-
 // An "error" indicating that matching failed. Use the fail_match! macro to create and return this.
 struct MatchFailed {
     // Only present when --debug-snippet is set.
     reason: Option<String>,
 }
 
+// For performance reasons, we don't want to record the reason why every match fails, only the bit
+// of code that the user indicated they thought would match. We use a thread local to indicate when
+// we are trying to match that bit of code. This saves us having to pass a boolean into all the bits
+// of code that can make the decision to not match.
 thread_local! {
     pub static RECORDING_MATCH_FAIL_REASONS: Cell<bool> = Cell::new(false);
 }
@@ -283,43 +272,8 @@ macro_rules! fail_match {
     }};
 }
 
-fn indent(num_spaces: usize) -> String {
-    std::iter::repeat(' ').take(num_spaces).collect()
-}
-
-fn print_tree(n: &SyntaxNode, depth: usize) {
-    println!("{}{:?}", indent(depth), n.kind());
-    for child_node_or_token in n.children_with_tokens() {
-        match child_node_or_token {
-            SyntaxElement::Node(child) => {
-                print_tree(&child, depth + 2);
-            }
-            SyntaxElement::Token(token) => {
-                println!("{}{:?}", indent(depth + 2), token);
-            }
-        }
-    }
-}
-
-fn print_debug_start(search: &[PatternElement], code: &SyntaxNode) {
-    println!("========= PATTERN ==========\n{:#?}\n", search);
-    println!("\n============ AST ===========\n");
-    print_tree(code, 0);
-    println!("\n============================");
-}
-
-// Converts a RA NodeOrToken to a green NodeOrToken.
-fn to_green_node_or_token(
-    n: &ra_syntax::NodeOrToken<SyntaxNode, ra_syntax::SyntaxToken>,
-) -> NodeOrToken<rowan::GreenNode, rowan::GreenToken> {
-    match n {
-        SyntaxElement::Node(n) => NodeOrToken::Node(n.green().clone()),
-        SyntaxElement::Token(t) => NodeOrToken::Token(t.green().clone()),
-    }
-}
-
 struct MatchState<'db, 'sema> {
-    placeholder_values: HashMap<SmolStr, SyntaxNode>,
+    placeholder_values: HashMap<SmolStr, PlaceholderMatch>,
     sema: &'sema ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
     root_module: ra_hir::Module,
 }
@@ -340,10 +294,11 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         };
         let mut pattern_iter = search.iter().peekable();
         match_state.attempt_match_node(&mut pattern_iter, code)?;
-        if let Some(pattern_next) = pattern_iter.next() {
+        let remaining_pattern: Vec<_> = pattern_iter.map(|p| p.to_string()).collect();
+        if !remaining_pattern.is_empty() {
             fail_match!(
-                "Code exhausted, but pattern still has content: {:?}",
-                pattern_next
+                "Code exhausted, but pattern still has content: {}",
+                remaining_pattern.join("")
             );
         }
         Ok(match_state)
@@ -355,10 +310,14 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         code: &SyntaxNode,
         sema: &'sema ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
         root_module: &ra_hir::Module,
-    ) -> Option<MatchState<'db, 'sema>> {
+    ) -> Option<Match> {
         RECORDING_MATCH_FAIL_REASONS.with(|c| c.set(debug_active));
         let result = match Self::matches(search, code, sema, root_module) {
-            Ok(state) => Some(state),
+            Ok(state) => Some(Match {
+                range: sema.original_range(code).range,
+                matched_node: code.clone(),
+                placeholder_values: state.placeholder_values,
+            }),
             Err(match_failed) => {
                 if debug_active {
                     if let Some(reason) = match_failed.reason {
@@ -380,23 +339,40 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         code: &SyntaxNode,
     ) -> Result<(), MatchFailed> {
         // Handle placeholders.
+        let pattern_start = pattern.clone();
         if let Some(PatternElement::Placeholder(placeholder)) = pattern.peek() {
-            if placeholder.can_consume(code) {
-                for constraint in &placeholder.constraints {
-                    self.validate_constraint(constraint, code)?;
+            let mut children = code.children_with_tokens();
+            if let Some(SyntaxElement::Node(child)) = children.next() {
+                // We have the option to go deeper before binding the placeholder since our first
+                // child is another node, with no tokens before it. Try going deeper and if that
+                // fails, reset our pattern and try again binding the placeholder to this node.
+                if self.attempt_match_node(pattern, &child).is_ok()
+                    && self.attempt_match_children(pattern, &mut children).is_ok()
+                {
+                    return Ok(());
+                } else {
+                    *pattern = pattern_start;
                 }
-                self.placeholder_values
-                    .insert(placeholder.ident.clone(), code.clone());
-                pattern.next();
-                return Ok(());
             }
+            // Actually consume the placeholder that we peeked above.
+            pattern.next();
+            for constraint in &placeholder.constraints {
+                self.validate_constraint(constraint, code)?;
+            }
+            // TODO: Check that the original range is from our file, otherwise reject the match.
+            let original_range = self.sema.original_range(code);
+            self.placeholder_values.insert(
+                placeholder.ident.clone(),
+                PlaceholderMatch::new(code, original_range.range),
+            );
+            return Ok(());
         }
-        if code.kind() == SyntaxKind::TOKEN_TREE {
-            self.attempt_match_token_tree(pattern, code)?;
-        } else if code.kind() == SyntaxKind::RECORD_FIELD_LIST {
-            self.attempt_match_record_field_list(pattern, &code)?;
-        } else {
-            self.attempt_match_node_children(pattern, &code)?;
+        match code.kind() {
+            SyntaxKind::TOKEN_TREE => self.attempt_match_token_tree(pattern, code)?,
+            SyntaxKind::RECORD_FIELD_LIST => {
+                self.attempt_match_record_field_list(pattern, &code)?
+            }
+            _ => self.attempt_match_node_children(pattern, &code)?,
         }
 
         Ok(())
@@ -407,7 +383,15 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         pattern: &mut PatternIterator,
         code: &SyntaxNode,
     ) -> Result<(), MatchFailed> {
-        for child in code.children_with_tokens() {
+        self.attempt_match_children(pattern, &mut code.children_with_tokens())
+    }
+
+    fn attempt_match_children(
+        &mut self,
+        pattern: &mut PatternIterator,
+        code: &mut ra_syntax::SyntaxElementChildren,
+    ) -> Result<(), MatchFailed> {
+        for child in code {
             match child {
                 SyntaxElement::Node(c) => self.attempt_match_node(pattern, &c)?,
                 SyntaxElement::Token(c) => self.attempt_match_token(pattern, &c)?,
@@ -569,7 +553,7 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
 
     // Placeholders have different semantics within token trees. Outside of token trees, a
     // placeholder can only match a single AST node, whereas in a token tree it can match a sequence
-    // of tokens.
+    // of tokens. TODO: See if we can use the macro expansion to identify nodes within the macro.
     fn attempt_match_token_tree(
         &mut self,
         pattern: &mut PatternIterator,
@@ -585,8 +569,8 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
                     } else {
                         None
                     };
-                    let mut matched = Vec::new();
-                    matched.push(to_green_node_or_token(&child));
+                    let first_matched_token = child.clone();
+                    let mut last_matched_token = child;
                     // Read code tokens util we reach one equal to the next token from our pattern
                     // or we reach the end of the token tree.
                     while let Some(next) = children.next() {
@@ -607,11 +591,15 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
                                 }
                             }
                         };
-                        matched.push(to_green_node_or_token(&next));
+                        last_matched_token = next;
                     }
                     self.placeholder_values.insert(
                         placeholder.ident.clone(),
-                        SyntaxNode::new_root(rowan::GreenNode::new(code.green().kind(), matched)),
+                        PlaceholderMatch::from_range(
+                            first_matched_token
+                                .text_range()
+                                .cover(last_matched_token.text_range()),
+                        ),
                     );
                 }
                 continue;
@@ -652,27 +640,6 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         }
         Ok(())
     }
-
-    fn apply_placeholders(&self, replacement: &[PatternElement]) -> Result<SyntaxNode, Error> {
-        let mut out = String::new();
-        for r in replacement {
-            match r {
-                PatternElement::Token(t) => out.push_str(t.text.as_str()),
-                PatternElement::Placeholder(p) => {
-                    if let Some(placeholder_value) = self.placeholder_values.get(&p.ident) {
-                        out.push_str(&placeholder_value.text().to_string());
-                    } else {
-                        // We validated that all placeholder references were valid before we started.
-                        unreachable!();
-                    }
-                }
-            }
-        }
-        // This almost certainly won't parse as a SourceFile, but all we need is to get out a
-        // SyntaxNode that can later on be converted to text, so it doesn't matter. Parsing
-        // preserves all text, even on error!
-        Ok(SourceFile::parse(&out).tree().syntax().clone())
-    }
 }
 
 fn is_closing_token(kind: SyntaxKind) -> bool {
@@ -681,8 +648,65 @@ fn is_closing_token(kind: SyntaxKind) -> bool {
 
 #[derive(Debug)]
 struct Match {
+    range: TextRange,
     matched_node: SyntaxNode,
-    placeholder_values: HashMap<SmolStr, SyntaxNode>,
+    placeholder_values: HashMap<SmolStr, PlaceholderMatch>,
+}
+
+#[derive(Debug)]
+struct PlaceholderMatch {
+    node: Option<SyntaxNode>,
+    range: TextRange,
+    inner_matches: Vec<Match>,
+}
+
+impl PlaceholderMatch {
+    fn new(node: &SyntaxNode, range: TextRange) -> Self {
+        Self {
+            node: Some(node.clone()),
+            range,
+            inner_matches: Vec::new(),
+        }
+    }
+
+    fn from_range(range: TextRange) -> Self {
+        Self {
+            node: None,
+            range,
+            inner_matches: Vec::new(),
+        }
+    }
+}
+
+impl Match {
+    fn apply_placeholders(&self, replacement: &[PatternElement], file_source: &str) -> String {
+        let mut out = String::new();
+        for r in replacement {
+            match r {
+                PatternElement::Token(t) => out.push_str(t.text.as_str()),
+                PatternElement::Placeholder(p) => {
+                    if let Some(placeholder_value) = self.placeholder_values.get(&p.ident) {
+                        let range = &placeholder_value.range;
+                        let mut matched_text = file_source
+                            [usize::from(range.start())..usize::from(range.end())]
+                            .to_owned();
+                        matches_to_edit(
+                            &placeholder_value.inner_matches,
+                            replacement,
+                            file_source,
+                            range.start(),
+                        )
+                        .apply(&mut matched_text);
+                        out.push_str(&matched_text);
+                    } else {
+                        // We validated that all placeholder references were valid before we started.
+                        unreachable!();
+                    }
+                }
+            }
+        }
+        out
+    }
 }
 
 struct MatchFinder<'db> {
@@ -708,26 +732,46 @@ impl<'db> MatchFinder<'db> {
     fn find_matches(
         &self,
         search: &[PatternElement],
-        code: &SyntaxNode,
         root_module: &ra_hir::Module,
-        matches: &mut Vec<Match>,
+        code: &SyntaxNode,
+        matches_out: &mut Vec<Match>,
     ) {
-        for c in code.children() {
-            let debug_active =
-                self.debug_snippet.is_some() && Some(c.text().to_string()) == self.debug_snippet;
-            if debug_active {
-                print_debug_start(search, &c);
+        let debug_active =
+            self.debug_snippet.is_some() && Some(code.text().to_string()) == self.debug_snippet;
+        if debug_active {
+            println!(
+                "========= PATTERN ==========\n{:#?}\
+                \n\n============ AST ===========\n\
+                {:#?}\n============================",
+                search, code
+            );
+        }
+        if let Some(mut m) =
+            MatchState::get_match(debug_active, &search, &code, &self.sema, root_module)
+        {
+            // Continue searching in each of our placeholders.
+            for placeholder_value in m.placeholder_values.values_mut() {
+                if let Some(placeholder_node) = &placeholder_value.node {
+                    self.find_matches(
+                        search,
+                        root_module,
+                        placeholder_node,
+                        &mut placeholder_value.inner_matches,
+                    );
+                }
             }
-            if let Some(match_state) =
-                MatchState::get_match(debug_active, &search, &c, &self.sema, root_module)
-            {
-                matches.push(Match {
-                    matched_node: c.clone(),
-                    placeholder_values: match_state.placeholder_values,
-                });
-            } else {
-                self.find_matches(search, &c, root_module, matches);
+            matches_out.push(m);
+            return;
+        }
+        // If we've got a macro call, we already tried matching it pre-expansion, which is the only
+        // way to match the whole macro, now try expanding it and matching the expansion.
+        if let Some(macro_call) = ast::MacroCall::cast(code.clone()) {
+            if let Some(expanded) = self.sema.expand(&macro_call) {
+                self.find_matches(search, root_module, &expanded, matches_out);
             }
+        }
+        for child in code.children() {
+            self.find_matches(search, root_module, &child, matches_out);
         }
     }
 
@@ -737,8 +781,8 @@ impl<'db> MatchFinder<'db> {
         let code = file.syntax();
         self.find_matches(
             &parse_pattern(pattern_str, true)?,
-            code,
             &self.root_module(code)?,
+            code,
             &mut matches,
         );
         return Ok(matches
@@ -747,65 +791,44 @@ impl<'db> MatchFinder<'db> {
             .collect());
     }
 
-    fn apply(
+    fn apply_str(
         &self,
-        search: &[PatternElement],
-        replace: &[PatternElement],
-        root_module: &ra_hir::Module,
-        code: &SyntaxNode,
-    ) -> Result<SyntaxNode, Error> {
-        let debug_active =
-            self.debug_snippet.is_some() && Some(code.text().to_string()) == self.debug_snippet;
-        if debug_active {
-            print_debug_start(search, code);
-        }
-        if let Some(mut match_state) =
-            MatchState::get_match(debug_active, &search, &code, &self.sema, root_module)
-        {
-            // Continue searching in each of our placeholders and make replacements there as well.
-            for placeholder_value in match_state.placeholder_values.values_mut() {
-                *placeholder_value = self.apply(search, replace, root_module, placeholder_value)?;
-            }
-            return match_state.apply_placeholders(replace);
-        }
-        let mut child_replacements = Vec::new();
-        let mut changed = false;
-        for child_node_or_token in code.children_with_tokens() {
-            match child_node_or_token {
-                SyntaxElement::Node(child) => {
-                    let replacement = self.apply(search, replace, root_module, &child)?;
-                    if replacement.parent().is_none() {
-                        // If the returned child has no parent, then it's not the child that we passed in.
-                        changed = true;
-                    }
-                    child_replacements.push(NodeOrToken::Node(replacement.green().clone()));
-                }
-                SyntaxElement::Token(token) => {
-                    child_replacements.push(NodeOrToken::Token(token.green().clone()))
-                }
-            }
-        }
-        if changed {
-            Ok(SyntaxNode::new_root(rowan::GreenNode::new(
-                code.green().kind(),
-                child_replacements,
-            )))
-        } else {
-            Ok(code.clone())
-        }
-    }
-
-    fn apply_str(&self, search: &str, replace: &str, file_id: FileId) -> Result<String, Error> {
+        search: &str,
+        replacement: &str,
+        file_id: FileId,
+    ) -> Result<Option<String>, Error> {
         let search = parse_pattern(search, true)?;
-        let replace = parse_pattern(replace, false)?;
-        validate_rule(&search, &replace)?;
+        let replacement = parse_pattern(replacement, false)?;
+        validate_rule(&search, &replacement)?;
         let file = self.sema.parse(file_id);
         let code = file.syntax();
-        Ok(self
-            .apply(&search, &replace, &self.root_module(code)?, code)?
-            .text()
-            .to_string())
+        let mut matches = Vec::new();
+        self.find_matches(&search, &self.root_module(code)?, code, &mut matches);
+        if matches.is_empty() {
+            return Ok(None);
+        }
+        use ra_db::FileLoader;
+        let mut file_source = self.sema.db.file_text(file_id).to_string();
+        let edit = matches_to_edit(&matches, &replacement, &file_source, TextSize::from(0));
+        edit.apply(&mut file_source);
+        Ok(Some(file_source))
     }
+}
+
+fn matches_to_edit(
+    matches: &[Match],
+    replacement: &[PatternElement],
+    file_source: &str,
+    relative_start: TextSize,
+) -> TextEdit {
+    let mut edit_builder = ra_text_edit::TextEditBuilder::default();
+    for m in matches {
+        edit_builder.replace(
+            m.range.checked_sub(relative_start).unwrap(),
+            m.apply_placeholders(replacement, file_source),
+        );
+    }
+    edit_builder.finish()
 }
 
 /// Searches for and replaces code based on token trees.
@@ -839,10 +862,11 @@ fn main() -> Result<(), Error> {
     let (db, file_id) = single_file(&config.code);
     let match_finder = MatchFinder::new(config.debug_snippet, &db);
     if let Some(replace) = &config.replace {
-        println!(
-            "OUT: {}",
-            match_finder.apply_str(&config.search, replace, file_id)?
-        );
+        if let Some(rewritten) = match_finder.apply_str(&config.search, replace, file_id)? {
+            println!("OUT: {}", rewritten);
+        } else {
+            println!("No replacement occurred");
+        }
     } else {
         let matches = match_finder.find_match_str(&config.search, file_id)?;
         if matches.is_empty() {
@@ -887,6 +911,29 @@ mod tests {
         };
     }
 
+    fn apply(search: &str, replace: &str, code: &str) -> Result<Option<String>, Error> {
+        let (db, file_id) = single_file(code);
+        let match_finder = MatchFinder::new(None, &db);
+        match_finder.apply_str(search, replace, file_id)
+    }
+
+    fn assert_replace(search: &str, replace: &str, code: &str, expected: &str) {
+        let out = apply(search, replace, code).unwrap();
+        if out != Some(expected.to_owned()) {
+            println!(
+                "Test is about to fail, to debug run (ideally with --debug-snippet set as well):\
+                \n  cargo run -- --search '{}' --replace '{}' --code '{}'",
+                search, replace, code,
+            );
+            if let Some(out) = out {
+                println!("Expected:\n{}\n\nActual:\n{}\n", expected, out);
+            } else {
+                panic!("No replacement occurred");
+            }
+            panic!("Test failed, see above for details");
+        }
+    }
+
     #[test]
     fn ignores_whitespace() {
         assert_matches!("1+2", "fn f() -> i32 {1  +  2}", ["1  +  2"]);
@@ -918,6 +965,17 @@ mod tests {
         assert_matches!("foo($a, $b)", code, ["foo(40 + 2, 42)"]);
         assert_no_match!("foo($a, $b, $c)", code);
         assert_no_match!("foo($a)", code);
+    }
+
+    // Make sure that when a placeholder has a choice of several nodes that it could consume, that
+    // it doesn't consume too early and then fail the rest of the match.
+    #[test]
+    fn match_nested_method_calls() {
+        assert_matches!(
+            "$a.z().z().z()",
+            "fn f() {h().i().j().z().z().z().d().e()}",
+            ["h().i().j().z().z().z()"]
+        );
     }
 
     #[test]
@@ -1027,84 +1085,90 @@ mod tests {
         );
     }
 
-    fn apply(search: &str, replace: &str, code: &str) -> Result<String, Error> {
-        let (db, file_id) = single_file(code);
-        let match_finder = MatchFinder::new(None, &db);
-        match_finder.apply_str(search, replace, file_id)
+    #[test]
+    fn replace_function_call() {
+        assert_replace(
+            "foo()",
+            "bar()",
+            "fn f1() {foo(); foo();}",
+            "fn f1() {bar(); bar();}",
+        );
     }
 
     #[test]
-    fn replace_function_call() -> Result<(), Error> {
-        assert_eq!(
-            apply("foo()", "bar()", "fn f1() {foo(); foo();}")?,
-            "fn f1() {bar(); bar();}"
+    fn replace_function_call_with_placeholders() {
+        assert_replace(
+            "foo($a, $b)",
+            "bar($b, $a)",
+            "fn f1() {foo(5, 42)}",
+            "fn f1() {bar(42, 5)}",
         );
-        Ok(())
     }
 
     #[test]
-    fn replace_function_call_with_placeholders() -> Result<(), Error> {
-        assert_eq!(
-            apply("foo($a, $b)", "bar($b, $a)", "fn f1() {foo(5, 42)}")?,
-            "fn f1() {bar(42, 5)}"
+    fn replace_nested_function_calls() {
+        assert_replace(
+            "foo($a)",
+            "bar($a)",
+            "fn f1() {foo(foo(42))}",
+            "fn f1() {bar(bar(42))}",
         );
-        Ok(())
     }
 
     #[test]
-    fn replace_nested_function_calls() -> Result<(), Error> {
-        assert_eq!(
-            apply("foo($a)", "bar($a)", "fn f1() {foo(foo(42))}")?,
-            "fn f1() {bar(bar(42))}"
+    fn replace_type() {
+        assert_replace(
+            "Result<(), $a>",
+            "Option<$a>",
+            "fn f1() -> Result<(), Vec<Error>> {foo()}",
+            "fn f1() -> Option<Vec<Error>> {foo()}",
         );
-        Ok(())
     }
 
     #[test]
-    fn replace_type() -> Result<(), Error> {
-        assert_eq!(
-            apply(
-                "Result<(), $a>",
-                "Option<$a>",
-                "fn f1() -> Result<(), Vec<Error>> {foo()}"
-            )?,
-            "fn f1() -> Option<Vec<Error>> {foo()}"
+    fn replace_struct_init() {
+        assert_replace(
+            "Foo {a: $a, b: $b}",
+            "Foo::new($a, $b)",
+            "fn f1() {Foo{b: 1, a: 2}}",
+            "fn f1() {Foo::new(2, 1)}",
         );
-        Ok(())
     }
 
     #[test]
-    fn replace_struct_init() -> Result<(), Error> {
-        assert_eq!(
-            apply(
-                "Foo {a: $a, b: $b}",
-                "Foo::new($a, $b)",
-                "fn f1() {Foo{b: 1, a: 2}}"
-            )?,
-            "fn f1() {Foo::new(2, 1)}"
+    fn replace_macro_invocations() {
+        assert_replace(
+            "try!($a)",
+            "$a?",
+            "fn f1() -> Result<(), E> {bar(try!(foo()));}",
+            "fn f1() -> Result<(), E> {bar(foo()?);}",
         );
-        Ok(())
+        assert_replace(
+            "foo!($a($b))",
+            "foo($b, $a)",
+            "fn f1() {foo!(abc(def() + 2));}",
+            "fn f1() {foo(def() + 2, abc);}",
+        );
     }
 
     #[test]
-    fn replace_macro_invocations() -> Result<(), Error> {
-        assert_eq!(
-            apply(
-                "try!($a)",
-                "$a?",
-                "fn f1() -> Result<(), E> {bar(try!(foo()));}"
-            )?,
-            "fn f1() -> Result<(), E> {bar(foo()?);}"
-        );
-        assert_eq!(
-            apply(
-                "foo!($a($b))",
-                "foo($b, $a)",
-                "fn f1() {foo!(abc(def() + 2));}"
-            )?,
-            "fn f1() {foo(def() + 2, abc);}"
-        );
-        Ok(())
+    fn match_within_macro_invocation() {
+        let code = r#"
+                macro_rules! foo {
+                    ($a:stmt; $b:expr) => {
+                        $b    
+                    };
+                }
+                struct A {}
+                impl A {
+                    fn bar() {}
+                }
+                fn f1() {
+                    let aaa = A {};
+                    foo!(macro_ignores_this(); aaa.bar());
+                }
+            "#;
+        assert_matches!("$a.bar()", code, ["aaa.bar()"]);
     }
 
     // Although matching macros is supported, matching within macros isn't. For patterns that don't
@@ -1112,12 +1176,13 @@ mod tests {
     // patterns like $a.foo(), we wouldn't know where to start matching.
     #[test]
     #[ignore]
-    fn replace_nested_macro_invocations() -> Result<(), Error> {
-        assert_eq!(
-            apply("try!($a)", "$a?", "fn f1() {try!(bar(try!(foo())));")?,
-            "fn f1() {bar(foo()?)?;}"
+    fn replace_nested_macro_invocations() {
+        assert_replace(
+            "try!($a)",
+            "$a?",
+            "fn f1() {try!(bar(try!(foo())));",
+            "fn f1() {bar(foo()?)?;}",
         );
-        Ok(())
     }
 
     #[test]
@@ -1135,6 +1200,36 @@ mod tests {
             ))
         );
     }
+
+    #[test]
+    fn replace_within_macro_invocation() {
+        let code = r#"
+                macro_rules! foo {
+                    ($a:stmt; $b:expr) => {
+                        $b
+                    };
+                }
+                struct A {}
+                impl A {
+                    fn bar() {}
+                }
+                fn f1() {
+                    let aaa = A {};
+                    foo!(macro_ignores_this(); aaa.bar());
+                }
+            "#;
+        assert_replace(
+            "$a.bar()",
+            "bar2($a)",
+            code,
+            &code.replace("aaa.bar()", "bar2(aaa)"),
+        );
+    }
+
+    // TODO: Macro that swaps the order of expressions so that the order we match in is not the
+    // order in the file.
+
+    // TODO: Match an expression that originates entirely from the macro.
 
     #[test]
     fn duplicate_placeholders() {
