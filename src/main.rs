@@ -14,7 +14,7 @@
 
 use argh::FromArgs;
 use fmt::Display;
-use ra_db::FileId;
+use ra_db::{FileId, FileRange};
 use ra_syntax::ast::{self, AstNode};
 use ra_syntax::{SmolStr, SyntaxElement, SyntaxKind, SyntaxNode, TextRange, TextSize};
 use ra_text_edit::TextEdit;
@@ -281,18 +281,17 @@ struct MatchState<'db, 'sema> {
 type PatternIterator<'a> = std::iter::Peekable<std::slice::Iter<'a, PatternElement>>;
 
 impl<'db, 'sema> MatchState<'db, 'sema> {
-    fn matches(
-        search: &[PatternElement],
+    fn try_match(
+        search_scope: &SearchScope,
         code: &SyntaxNode,
         sema: &'sema ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
-        root_module: &ra_hir::Module,
     ) -> Result<MatchState<'db, 'sema>, MatchFailed> {
         let mut match_state = MatchState {
             placeholder_values: HashMap::new(),
             sema,
-            root_module: root_module.clone(),
+            root_module: search_scope.root_module.clone(),
         };
-        let mut pattern_iter = search.iter().peekable();
+        let mut pattern_iter = search_scope.search.iter().peekable();
         match_state.attempt_match_node(&mut pattern_iter, code)?;
         let remaining_pattern: Vec<_> = pattern_iter.map(|p| p.to_string()).collect();
         if !remaining_pattern.is_empty() {
@@ -301,18 +300,25 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
                 remaining_pattern.join("")
             );
         }
+        if let Some(restrict_range) = &search_scope.restrict_range {
+            let code_range = sema.original_range(code);
+            if restrict_range.file_id != code_range.file_id
+                || !restrict_range.range.contains_range(code_range.range)
+            {
+                fail_match!("Node originated from a macro");
+            }
+        }
         Ok(match_state)
     }
 
     fn get_match(
         debug_active: bool,
-        search: &[PatternElement],
+        search_scope: &SearchScope,
         code: &SyntaxNode,
         sema: &'sema ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
-        root_module: &ra_hir::Module,
     ) -> Option<Match> {
         RECORDING_MATCH_FAIL_REASONS.with(|c| c.set(debug_active));
-        let result = match Self::matches(search, code, sema, root_module) {
+        let result = match Self::try_match(search_scope, code, sema) {
             Ok(state) => Some(Match {
                 range: sema.original_range(code).range,
                 matched_node: code.clone(),
@@ -714,6 +720,12 @@ struct MatchFinder<'db> {
     sema: ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
 }
 
+struct SearchScope<'a> {
+    search: &'a [PatternElement],
+    root_module: &'a ra_hir::Module,
+    restrict_range: Option<FileRange>,
+}
+
 impl<'db> MatchFinder<'db> {
     fn new(debug_snippet: Option<String>, db: &'db ra_ide_db::RootDatabase) -> MatchFinder<'db> {
         MatchFinder {
@@ -731,8 +743,7 @@ impl<'db> MatchFinder<'db> {
 
     fn find_matches(
         &self,
-        search: &[PatternElement],
-        root_module: &ra_hir::Module,
+        search_scope: &SearchScope,
         code: &SyntaxNode,
         matches_out: &mut Vec<Match>,
     ) {
@@ -743,18 +754,15 @@ impl<'db> MatchFinder<'db> {
                 "========= PATTERN ==========\n{:#?}\
                 \n\n============ AST ===========\n\
                 {:#?}\n============================",
-                search, code
+                search_scope.search, code
             );
         }
-        if let Some(mut m) =
-            MatchState::get_match(debug_active, &search, &code, &self.sema, root_module)
-        {
+        if let Some(mut m) = MatchState::get_match(debug_active, search_scope, &code, &self.sema) {
             // Continue searching in each of our placeholders.
             for placeholder_value in m.placeholder_values.values_mut() {
                 if let Some(placeholder_node) = &placeholder_value.node {
                     self.find_matches(
-                        search,
-                        root_module,
+                        search_scope,
                         placeholder_node,
                         &mut placeholder_value.inner_matches,
                     );
@@ -767,11 +775,23 @@ impl<'db> MatchFinder<'db> {
         // way to match the whole macro, now try expanding it and matching the expansion.
         if let Some(macro_call) = ast::MacroCall::cast(code.clone()) {
             if let Some(expanded) = self.sema.expand(&macro_call) {
-                self.find_matches(search, root_module, &expanded, matches_out);
+                if let Some(tt) = macro_call.token_tree() {
+                    // When matching within a macro expansion, we only want to allow matches of
+                    // nodes that originated entirely from within the token tree of the macro call.
+                    // i.e. we don't want to match something that came from the macro itself.
+                    self.find_matches(
+                        &SearchScope {
+                            restrict_range: Some(self.sema.original_range(tt.syntax())),
+                            ..*search_scope
+                        },
+                        &expanded,
+                        matches_out,
+                    );
+                }
             }
         }
         for child in code.children() {
-            self.find_matches(search, root_module, &child, matches_out);
+            self.find_matches(search_scope, &child, matches_out);
         }
     }
 
@@ -780,8 +800,11 @@ impl<'db> MatchFinder<'db> {
         let file = self.sema.parse(file_id);
         let code = file.syntax();
         self.find_matches(
-            &parse_pattern(pattern_str, true)?,
-            &self.root_module(code)?,
+            &SearchScope {
+                search: &parse_pattern(pattern_str, true)?,
+                root_module: &self.root_module(code)?,
+                restrict_range: None,
+            },
             code,
             &mut matches,
         );
@@ -803,7 +826,15 @@ impl<'db> MatchFinder<'db> {
         let file = self.sema.parse(file_id);
         let code = file.syntax();
         let mut matches = Vec::new();
-        self.find_matches(&search, &self.root_module(code)?, code, &mut matches);
+        self.find_matches(
+            &SearchScope {
+                search: &search,
+                root_module: &self.root_module(code)?,
+                restrict_range: None,
+            },
+            code,
+            &mut matches,
+        );
         if matches.is_empty() {
             return Ok(None);
         }
@@ -1050,6 +1081,36 @@ mod tests {
         assert_no_match!("foo!(50, $a, 43)", "fn() {foo!(41, 42, 43}");
         assert_no_match!("foo!(41, $a, 50)", "fn() {foo!(41, 42, 43}");
         assert_matches!("foo!($a())", "fn() {foo!(bar())}", ["foo!(bar())"]);
+    }
+
+    // When matching within a macro expansion, we only allow matches of nodes that originated from
+    // the macro call, not from the macro definition.
+    #[test]
+    fn no_match_expression_from_macro() {
+        assert_no_match!(
+            "${a:type(i32)}.clone()",
+            r#"
+                macro_rules! m1 {
+                    () => {42.clone()}
+                }
+                fn f1() {m1!()}
+                "#
+        );
+    }
+
+    // We definitely don't want to allow matching of an expression that part originates from the
+    // macro call `42` and part from the macro definition `.clone()`.
+    #[test]
+    fn no_match_split_expression() {
+        assert_no_match!(
+            "${a:type(i32)}.clone()",
+            r#"
+                macro_rules! m1 {
+                    ($x:expr) => {$x.clone()}
+                }
+                fn f1() {m1!(42)}
+                "#
+        );
     }
 
     #[test]
