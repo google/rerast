@@ -977,6 +977,7 @@ struct SearchTrees {
     type_ref: Result<PatternNode, InvalidPatternTree>,
     item: Result<PatternNode, InvalidPatternTree>,
     path: Result<PatternNode, InvalidPatternTree>,
+    pattern: Result<PatternNode, InvalidPatternTree>,
 }
 
 // Our search pattern, parsed as each different kind of syntax node we might encounter.
@@ -988,6 +989,7 @@ impl SearchTrees {
             type_ref: create_pattern_tree(tokens, ra_parser::FragmentKind::Type),
             item: create_pattern_tree(tokens, ra_parser::FragmentKind::Item),
             path: create_pattern_tree(tokens, ra_parser::FragmentKind::Path),
+            pattern: create_pattern_tree(tokens, ra_parser::FragmentKind::Pattern),
         }
     }
 
@@ -1000,6 +1002,8 @@ impl SearchTrees {
             &self.item
         } else if ast::Path::can_cast(kind) {
             &self.path
+        } else if ast::Pat::can_cast(kind) {
+            &self.pattern
         } else {
             fail_match!("Matching nodes of kind {:?} is not supported", kind);
         };
@@ -1374,7 +1378,18 @@ mod tests {
 
     #[test]
     fn match_path() {
-        assert_matches("foo::bar", "fn f() {foo::bar(42)}}", &["foo::bar"]);
+        assert_matches("foo::bar", "fn f() {foo::bar(42)}", &["foo::bar"]);
+        assert_matches("$a::bar", "fn f() {foo::bar(42)}", &["foo::bar"]);
+        assert_matches("foo::$b", "fn f() {foo::bar(42)}", &["foo::bar"]);
+    }
+
+    #[test]
+    fn match_pattern() {
+        assert_matches(
+            "Some($a)",
+            "fn f() {if let Some(x) = foo() {}}",
+            &["Some(x)"],
+        );
     }
 
     #[test]
