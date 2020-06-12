@@ -49,6 +49,7 @@ macro_rules! bail {
 struct Token {
     kind: SyntaxKind,
     text: SmolStr,
+    is_jointed_to_next: bool,
 }
 
 #[derive(Clone)]
@@ -81,18 +82,22 @@ fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
     if let Some(first_error) = errors.first() {
         bail!("Failed to parse pattern: {}", first_error);
     }
-    Ok(raw_tokens
-        .iter()
-        .map(|raw_token| {
-            let token_len = usize::from(raw_token.len);
-            let token = Token {
-                kind: raw_token.kind,
-                text: SmolStr::new(&source[start..start + token_len]),
-            };
-            start += token_len;
-            token
-        })
-        .collect())
+    let mut tokens: Vec<Token> = Vec::new();
+    for raw_token in raw_tokens {
+        if let Some(previous) = tokens.last_mut() {
+            if raw_token.kind != SyntaxKind::WHITESPACE {
+                previous.is_jointed_to_next = true;
+            }
+        }
+        let token_len = usize::from(raw_token.len);
+        tokens.push(Token {
+            kind: raw_token.kind,
+            text: SmolStr::new(&source[start..start + token_len]),
+            is_jointed_to_next: false,
+        });
+        start += token_len;
+    }
+    Ok(tokens)
 }
 
 fn parse_pattern(pattern_str: &str, remove_whitespace: bool) -> Result<Vec<PatternElement>, Error> {
@@ -339,13 +344,10 @@ impl ra_parser::TokenSource for PatternTokenSource<'_> {
                 kind: SyntaxKind::EOF,
                 is_jointed_to_next: false,
             },
-            Some(PatternElement::Token(token)) => {
-                ra_parser::Token {
-                    kind: token.kind,
-                    // TODO
-                    is_jointed_to_next: false,
-                }
-            }
+            Some(PatternElement::Token(token)) => ra_parser::Token {
+                kind: token.kind,
+                is_jointed_to_next: token.is_jointed_to_next,
+            },
             Some(PatternElement::Placeholder(_)) => ra_parser::Token {
                 kind: SyntaxKind::IDENT,
                 is_jointed_to_next: false,
@@ -375,6 +377,7 @@ impl ra_parser::TreeSink for PatternTreeSink<'_> {
                 Some(PatternElement::Token(t)) => PatternTree::Token(Token {
                     kind,
                     text: t.text.clone(),
+                    is_jointed_to_next: false,
                 }),
                 Some(PatternElement::Placeholder(p)) => PatternTree::Placeholder(p.clone()),
                 None => unreachable!(),
@@ -391,6 +394,7 @@ impl ra_parser::TreeSink for PatternTreeSink<'_> {
             node.children.push(PatternTree::Token(Token {
                 kind,
                 text: SmolStr::new(text),
+                is_jointed_to_next: false,
             }))
         }
     }
@@ -972,6 +976,7 @@ struct SearchTrees {
     expr: Result<PatternNode, InvalidPatternTree>,
     type_ref: Result<PatternNode, InvalidPatternTree>,
     item: Result<PatternNode, InvalidPatternTree>,
+    path: Result<PatternNode, InvalidPatternTree>,
 }
 
 // Our search pattern, parsed as each different kind of syntax node we might encounter.
@@ -982,6 +987,7 @@ impl SearchTrees {
             expr: create_pattern_tree(tokens, ra_parser::FragmentKind::Expr),
             type_ref: create_pattern_tree(tokens, ra_parser::FragmentKind::Type),
             item: create_pattern_tree(tokens, ra_parser::FragmentKind::Item),
+            path: create_pattern_tree(tokens, ra_parser::FragmentKind::Path),
         }
     }
 
@@ -992,6 +998,8 @@ impl SearchTrees {
             &self.type_ref
         } else if ast::ModuleItem::can_cast(kind) {
             &self.item
+        } else if ast::Path::can_cast(kind) {
+            &self.path
         } else {
             fail_match!("Matching nodes of kind {:?} is not supported", kind);
         };
@@ -1362,6 +1370,11 @@ mod tests {
             &["Foo {bar: 1, baz: 2}"],
         );
         assert_matches("Foo {}", "fn f() {Foo {}}", &["Foo {}"]);
+    }
+
+    #[test]
+    fn match_path() {
+        assert_matches("foo::bar", "fn f() {foo::bar(42)}}", &["foo::bar"]);
     }
 
     #[test]
