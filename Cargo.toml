@@ -11,3 +11,4 @@ ra_db = { path = "../../src/rust-analyzer/crates/ra_db" }
 ra_ide_db = { path = "../../src/rust-analyzer/crates/ra_ide_db" }
 ra_hir = { path = "../../src/rust-analyzer/crates/ra_hir" }
 ra_text_edit = { path = "../../src/rust-analyzer/crates/ra_text_edit" }
+ra_parser = { path = "../../src/rust-analyzer/crates/ra_parser" }
