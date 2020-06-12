@@ -286,6 +286,41 @@ impl PatternNode {
         }
     }
 
+    // Calls `callback` for each token in `self` in order.
+    fn tokens_do(&self, callback: &mut impl FnMut(&Token)) {
+        for c in &self.children {
+            match c {
+                PatternTree::Node(n) => n.tokens_do(callback),
+                PatternTree::Token(t) => callback(t),
+                _ => {}
+            }
+        }
+    }
+
+    // Returns whether this node is a path node equal to `path`.
+    fn matches_path(&self, path: &[SmolStr]) -> bool {
+        let mut path = path.iter();
+        // We can't early return when  we get a failure, since closures don't work like that in
+        // Rust, so we have to keep track of whether we've failed and keep iterating to the end. If
+        // we find ourselves doing this again, we should probably either replace tokens_do with an
+        // iterator, or investigate using rowan. For now, this seems simplest.
+        let mut equal = true;
+        self.tokens_do(&mut |t: &Token| match t.kind {
+            SyntaxKind::IDENT => {
+                if let Some(p) = path.next() {
+                    if *p != t.text {
+                        equal = false;
+                    }
+                } else {
+                    equal = false;
+                }
+            }
+            SyntaxKind::COLON2 => {}
+            _ => {equal = false}
+        });
+        equal && path.next().is_none()
+    }
+
     fn print_tree(&self, f: &mut fmt::Formatter<'_>, indent: &str) -> fmt::Result {
         writeln!(f, "{}{:?}", indent, self.kind)?;
         for c in &self.children {
@@ -539,6 +574,9 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         Ok(match_state)
     }
 
+    // Checks that `range` is within the permitted range if any. This is applicable when we're
+    // processing a macro expansion and we want to fail the match if we're working with a node that
+    // didn't originate from the token tree of the macro call.
     fn validate_range(&self, range: &FileRange) -> Result<(), MatchFailed> {
         if let Some(restrict_range) = &self.restrict_range {
             if restrict_range.file_id != range.file_id
@@ -589,7 +627,8 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
                 self.validate_constraint(constraint, code)?;
             }
             let original_range = self.sema.original_range(code);
-            // TODO: Write a test that fails without the following line.
+            // We validated the range for the node when we started the match, so the placeholder
+            // probably can't fail range validation, but just to be safe...
             self.validate_range(&original_range)?;
             self.placeholder_values.insert(
                 placeholder.ident.clone(),
@@ -605,9 +644,12 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
                 code.kind()
             );
         }
+        // Some kinds of nodes have special handling. For everything else, we fall back to default
+        // matching.
         match code.kind() {
             SyntaxKind::RECORD_FIELD_LIST => self.attempt_match_record_field_list(pattern, code),
             SyntaxKind::TOKEN_TREE => self.attempt_match_token_tree(pattern, code),
+            SyntaxKind::PATH => self.attempt_match_path(pattern, code),
             _ => self.attempt_match_node_children(pattern, code),
         }
     }
@@ -728,13 +770,7 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
     fn get_type_path(&self, ty: &ra_hir::Type) -> Result<Vec<SmolStr>, MatchFailed> {
         if let Some(adt) = ty.as_adt() {
             let module = adt.module(self.sema.db);
-            let mut ty_path: Vec<SmolStr> = module
-                .path_to_root(self.sema.db)
-                .iter()
-                .filter_map(|m| m.name(self.sema.db))
-                .map(|name| SmolStr::new(name.to_string()))
-                .collect();
-            ty_path.reverse();
+            let mut ty_path: Vec<SmolStr> = self.module_path(&module);
             ty_path.push(SmolStr::new(adt.name(self.sema.db).to_string()));
             Ok(ty_path)
         } else {
@@ -744,6 +780,42 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
                 Err(e) => fail_match!("Failed to get type: {:?}", e),
             }
         }
+    }
+
+    fn module_path(&self, module: &ra_hir::Module) -> Vec<SmolStr> {
+        let mut path: Vec<SmolStr> = module
+            .path_to_root(self.sema.db)
+            .iter()
+            .filter_map(|m| m.name(self.sema.db))
+            .map(|name| SmolStr::new(name.to_string()))
+            .collect();
+        path.reverse();
+        path
+    }
+
+    // We want to allow fully-qualified paths to match non-fully-qualified paths that resolve to the
+    // same thing.
+    fn attempt_match_path(
+        &mut self,
+        pattern: &PatternNode,
+        code: &SyntaxNode,
+    ) -> Result<(), MatchFailed> {
+        if let Some(path) = ast::Path::cast(code.clone()) {
+            if let Some(ra_hir::PathResolution::Def(resolved_def)) = self.sema.resolve_path(&path) {
+                // TODO: Handle more than just paths to functions.
+                if let ra_hir::ModuleDef::Function(fn_def) = resolved_def {
+                    if let Some(module) = resolved_def.module(self.sema.db) {
+                        let mut full_path = self.module_path(&module);
+                        full_path.push(SmolStr::new(fn_def.name(self.sema.db).to_string()));
+                        if pattern.matches_path(&full_path) {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+        // Fall back to regular matching.
+        self.attempt_match_node_children(pattern, code)
     }
 
     // We want to allow the records to match in any order, so we have special matching logic for
@@ -1392,6 +1464,24 @@ mod tests {
         );
     }
 
+    // If our pattern has a full path, e.g. a::b::c() and the code has c(), but c resolves to
+    // a::b::c, then we should match.
+    #[test]
+    fn match_fully_qualified_fn_path() {
+        let code = r#"
+            mod a {
+                mod b {
+                    fn c() {}
+                }
+            }
+            use a::b::c;
+            fn f1() {
+                c(42);
+            }
+            "#;
+        assert_matches("a::b::c($a)", code, &["c(42)"]);
+    }
+
     #[test]
     fn match_reordered_struct_instantiation() {
         assert_matches(
@@ -1626,9 +1716,11 @@ mod tests {
                 impl A {
                     fn bar() {}
                 }
-                fn f1() {
+                fn f1() -> i32 {
                     let aaa = A {};
                     foo!(macro_ignores_this(); aaa.bar());
+                    foo!(macro_ignores_this(); 1 + 2 + 3);
+                    1 + 2 + 3
                 }
             "#;
         assert_replace(
@@ -1636,6 +1728,12 @@ mod tests {
             "bar2($a)",
             code,
             &code.replace("aaa.bar()", "bar2(aaa)"),
+        );
+        assert_replace(
+            "$a + $b",
+            "$b - $a",
+            code,
+            &code.replace("1 + 2 + 3", "3 - 2 - 1"),
         );
     }
 
