@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+///! This module is responsible for parsing and validation of search and replace patterns.
 use crate::Error;
 use ra_syntax::{SmolStr, SyntaxKind};
 use std::collections::HashSet;
@@ -428,7 +429,7 @@ fn parse_constraint(tokens: &mut std::vec::IntoIter<Token>) -> Result<Constraint
             expect_token(tokens, ")")?;
             Ok(Constraint::Not(Box::new(sub)))
         }
-        x => bail!("Unsupported constraint type {}", x),
+        x => bail!("Unsupported constraint type '{}'", x),
     }
 }
 
@@ -526,5 +527,42 @@ mod tests {
                 "Placeholders should either be $name or ${name:constraints}"
             ))
         );
+    }
+
+    #[test]
+    fn duplicate_placeholder() {
+        assert_eq!(
+            parse_pattern("$a + $a", true).err(),
+            Some(Error::new("Duplicate placeholder: $a"))
+        );
+    }
+
+    #[test]
+    fn unsupported_constraint_type() {
+        assert_eq!(
+            parse_pattern("${a:foobar}", true).err(),
+            Some(Error::new("Unsupported constraint type 'foobar'"))
+        );
+    }
+
+    #[test]
+    fn missing_closing_brace() {
+        assert_eq!(
+            parse_pattern("${a", true).err(),
+            Some(Error::new("Placeholder is missing closing brace '}'"))
+        );
+    }
+
+    #[test]
+    fn unknown_placeholder() -> Result<(), Error> {
+        let search = parse_pattern("$a", true)?;
+        let replace = parse_pattern("$b", false)?;
+        assert_eq!(
+            validate_rule(&search, &replace).err(),
+            Some(Error::new(
+                "Replacement contains undefined placeholders: $b"
+            ))
+        );
+        Ok(())
     }
 }

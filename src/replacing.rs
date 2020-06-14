@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+///! This module is responsible for applying a replacement pattern based on matches found by the
+///! matching module.
 use crate::matching::Match;
 use crate::patterns::PatternElement;
 use ra_syntax::TextSize;
@@ -41,7 +43,7 @@ impl Match {
                 PatternElement::Token(t) => out.push_str(t.text.as_str()),
                 PatternElement::Placeholder(p) => {
                     if let Some(placeholder_value) = self.placeholder_values.get(&p.ident) {
-                        let range = &placeholder_value.range;
+                        let range = &placeholder_value.range.range;
                         let mut matched_text = file_source
                             [usize::from(range.start())..usize::from(range.end())]
                             .to_owned();

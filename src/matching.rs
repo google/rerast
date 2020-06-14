@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+///! This module is responsible for checking if code matches a pattern.
 use super::SearchScope;
 use crate::patterns::{
     self, Constraint, InvalidPatternTree, PatternElement, PatternNode, PatternTree, Token,
@@ -58,15 +59,20 @@ pub(crate) struct Match {
     pub(crate) placeholder_values: HashMap<SmolStr, PlaceholderMatch>,
 }
 
+/// Information about a placeholder bound in a match.
 #[derive(Debug)]
 pub(crate) struct PlaceholderMatch {
     /// The node that the placeholder matched to. If set, then we'll search for further matches
     /// within this node. It isn't set when we match tokens within a macro call's token tree.
     pub(crate) node: Option<SyntaxNode>,
-    pub(crate) range: TextRange,
+    pub(crate) range: FileRange,
+    /// More matches, found within `node`.
     pub(crate) inner_matches: Vec<Match>,
 }
 
+/// Stores our search pattern, parsed as each different kind of thing we can look for. As we
+/// traverse the AST, we get the appropriate one of these for the type of node we're on. For many
+/// search patterns, only some of these will be present.
 pub(crate) struct SearchTrees {
     expr: Result<PatternNode, InvalidPatternTree>,
     type_ref: Result<PatternNode, InvalidPatternTree>,
@@ -78,10 +84,14 @@ pub(crate) struct SearchTrees {
 /// An "error" indicating that matching failed. Use the fail_match! macro to create and return this.
 #[derive(Clone)]
 pub(crate) struct MatchFailed {
-    /// Only present when --debug-snippet is set.
+    /// The reason why we failed to match. Only present when debug_active true in call to
+    /// `get_match`.
     reason: Option<String>,
 }
 
+/// Checks if `code` matches the search pattern found in `search_scope`, returning information about
+/// the match, if it does. Since we only do matching in this module and searching is done by the
+/// parent module, we don't populate nested matches.
 pub(crate) fn get_match(
     debug_active: bool,
     search_scope: &SearchScope,
@@ -110,10 +120,13 @@ pub(crate) fn get_match(
     result
 }
 
+/// State used while attempting to match our search pattern against a particular node of the AST.
 struct MatchState<'db, 'sema> {
     placeholder_values: HashMap<SmolStr, PlaceholderMatch>,
     sema: &'sema ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
     root_module: ra_hir::Module,
+    /// If any placeholders come from anywhere outside of this range, then the match will be
+    /// rejected.
     restrict_range: Option<FileRange>,
 }
 
@@ -164,7 +177,7 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
             self.validate_range(&original_range)?;
             self.placeholder_values.insert(
                 placeholder.ident.clone(),
-                PlaceholderMatch::new(code, original_range.range),
+                PlaceholderMatch::new(code, original_range),
             );
             return Ok(());
         }
@@ -559,11 +572,12 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
                 }
                 self.placeholder_values.insert(
                     placeholder.ident.clone(),
-                    PlaceholderMatch::from_range(
-                        first_matched_token
+                    PlaceholderMatch::from_range(FileRange {
+                        file_id: self.sema.original_range(code).file_id,
+                        range: first_matched_token
                             .text_range()
                             .cover(last_matched_token.text_range()),
-                    ),
+                    }),
                 );
                 continue;
             }
@@ -628,7 +642,7 @@ fn is_closing_token(kind: SyntaxKind) -> bool {
 }
 
 impl PlaceholderMatch {
-    fn new(node: &SyntaxNode, range: TextRange) -> Self {
+    fn new(node: &SyntaxNode, range: FileRange) -> Self {
         Self {
             node: Some(node.clone()),
             range,
@@ -636,7 +650,7 @@ impl PlaceholderMatch {
         }
     }
 
-    fn from_range(range: TextRange) -> Self {
+    fn from_range(range: FileRange) -> Self {
         Self {
             node: None,
             range,

@@ -30,11 +30,17 @@ struct Error {
     message: String,
 }
 
+/// Searches a crate for pattern matches and possibly replaces them with something else.
 struct MatchFinder<'db> {
+    /// If set, any nodes that match this string exactly will be considered as nodes that we
+    /// expected to match. For such nodes, we'll print additional debugging information and if
+    /// matching fails, we'll collect and report the reason why.
     debug_snippet: Option<String>,
+    /// Our source of information about the user's code.
     sema: ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
 }
 
+/// Information about the search we're currently doing. We enter a nested scope each time we encounter a macro call. The inner scope
 struct SearchScope<'a> {
     search: &'a SearchTrees,
     root_module: &'a ra_hir::Module,
