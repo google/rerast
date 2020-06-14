@@ -21,6 +21,34 @@ use ra_text_edit::TextEdit;
 use std::collections::{HashMap, HashSet};
 use std::{cell::Cell, fmt};
 
+/// Creates a match error. If we're currently attempting to match some code that we thought we were
+/// going to match, as indicated by the --debug-snippet flag, then populate the reason field.
+macro_rules! match_error {
+    ($e:expr) => {{
+            MatchFailed {
+                reason: if recording_match_fail_reasons() {
+                    Some(format!("{}", $e))
+                } else {
+                    None
+                }
+            }
+    }};
+    ($fmt:expr, $($arg:tt)+) => {{
+        MatchFailed {
+            reason: if recording_match_fail_reasons() {
+                Some(format!($fmt, $($arg)+))
+            } else {
+                None
+            }
+        }
+    }};
+}
+
+/// Fails the current match attempt, recording the supplied reason if we're recording match fail reasons.
+macro_rules! fail_match {
+    ($($args:tt)*) => {return Err(match_error!($($args)*))};
+}
+
 #[derive(Debug, Eq, PartialEq)]
 struct Error {
     message: String,
@@ -238,6 +266,17 @@ enum PatternTree {
     Placeholder(Placeholder),
 }
 
+impl fmt::Display for PatternTree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PatternTree::Node(n) => write!(f, "{}", n)?,
+            PatternTree::Token(t) => write!(f, "{}", t.text)?,
+            PatternTree::Placeholder(p) => write!(f, "${}", p.ident)?,
+        }
+        Ok(())
+    }
+}
+
 impl PatternTree {
     fn print_tree(&self, f: &mut fmt::Formatter<'_>, indent: &str) -> fmt::Result {
         match self {
@@ -259,6 +298,15 @@ impl PatternTree {
 struct PatternNode {
     kind: SyntaxKind,
     children: Vec<PatternTree>,
+}
+
+impl fmt::Display for PatternNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for c in &self.children {
+            write!(f, "{}", c)?
+        }
+        Ok(())
+    }
 }
 
 impl PatternNode {
@@ -284,41 +332,6 @@ impl PatternNode {
             PatternTree::Node(n) => n.ident(),
             _ => None,
         }
-    }
-
-    // Calls `callback` for each token in `self` in order.
-    fn tokens_do(&self, callback: &mut impl FnMut(&Token)) {
-        for c in &self.children {
-            match c {
-                PatternTree::Node(n) => n.tokens_do(callback),
-                PatternTree::Token(t) => callback(t),
-                _ => {}
-            }
-        }
-    }
-
-    // Returns whether this node is a path node equal to `path`.
-    fn matches_path(&self, path: &[SmolStr]) -> bool {
-        let mut path = path.iter();
-        // We can't early return when  we get a failure, since closures don't work like that in
-        // Rust, so we have to keep track of whether we've failed and keep iterating to the end. If
-        // we find ourselves doing this again, we should probably either replace tokens_do with an
-        // iterator, or investigate using rowan. For now, this seems simplest.
-        let mut equal = true;
-        self.tokens_do(&mut |t: &Token| match t.kind {
-            SyntaxKind::IDENT => {
-                if let Some(p) = path.next() {
-                    if *p != t.text {
-                        equal = false;
-                    }
-                } else {
-                    equal = false;
-                }
-            }
-            SyntaxKind::COLON2 => {}
-            _ => {equal = false}
-        });
-        equal && path.next().is_none()
     }
 
     fn print_tree(&self, f: &mut fmt::Formatter<'_>, indent: &str) -> fmt::Result {
@@ -491,24 +504,6 @@ fn recording_match_fail_reasons() -> bool {
     RECORDING_MATCH_FAIL_REASONS.with(|c| c.get())
 }
 
-/// Fails the current match attempt. If we're currently attempting to match some code that we
-/// thought we were going to match, as indicated by the --debug-snippet flag, then populate the
-/// reason field.
-macro_rules! fail_match {
-    ($e:expr) => {{
-        if recording_match_fail_reasons() {
-            return Err(MatchFailed { reason: Some(format!("{}", $e)) });
-        }
-        return Err(MatchFailed { reason: None });
-    }};
-    ($fmt:expr, $($arg:tt)+) => {{
-        if recording_match_fail_reasons() {
-            return Err(MatchFailed { reason: Some(format!($fmt, $($arg)+)) });
-        }
-        return Err(MatchFailed { reason: None });
-    }};
-}
-
 struct InvalidPatternTree {
     reason: String,
 }
@@ -659,8 +654,15 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         pattern: &PatternNode,
         code: &SyntaxNode,
     ) -> Result<(), MatchFailed> {
-        let mut pattern_it = pattern.children.iter().peekable();
-        let mut code_it = code.children_with_tokens();
+        self.attempt_match_sequences(pattern.children.iter(), code.children_with_tokens())
+    }
+
+    fn attempt_match_sequences(
+        &mut self,
+        pattern_it: std::slice::Iter<PatternTree>,
+        mut code_it: ra_syntax::SyntaxElementChildren,
+    ) -> Result<(), MatchFailed> {
+        let mut pattern_it = pattern_it.peekable();
         loop {
             match next_non_trivial(&mut code_it) {
                 None => {
@@ -676,7 +678,8 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
                     Some(PatternTree::Node(p)) => {
                         self.attempt_match_node(p, &c)?;
                     }
-                    p => fail_match!("Pattern wanted {:?}, code has {:?}", p, c),
+                    Some(p) => fail_match!("Pattern wanted '{}', code has {}", p, c.text()),
+                    None => fail_match!("Pattern reached end, code has {}", c.text()),
                 },
             }
         }
@@ -746,21 +749,18 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
     ) -> Result<(), MatchFailed> {
         match constraint {
             Constraint::ExprType(constraint_path) => {
-                if let Some(expr) = ast::Expr::cast(code.clone()) {
-                    if let Some(ty) = self.sema.type_of_expr(&expr) {
-                        let ty_path = self.get_type_path(&ty)?;
-                        if ty_path != constraint_path.as_slice() {
-                            fail_match!(
-                                "Expected type {}, found {}",
-                                constraint_path.join("::"),
-                                ty_path.join("::")
-                            );
-                        }
-                    } else {
-                        fail_match!("Couldn't get expression type for code `{}`", code.text());
-                    }
-                } else {
-                    fail_match!("Not an expression `{}`", code.text());
+                let expr = ast::Expr::cast(code.clone())
+                    .ok_or_else(|| match_error!("Not an expression `{}`", code.text()))?;
+                let ty = self.sema.type_of_expr(&expr).ok_or_else(|| {
+                    match_error!("Couldn't get expression type for code `{}`", code.text())
+                })?;
+                let ty_path = self.get_type_path(&ty)?;
+                if ty_path != constraint_path.as_slice() {
+                    fail_match!(
+                        "Expected type {}, found {}",
+                        constraint_path.join("::"),
+                        ty_path.join("::")
+                    );
                 }
             }
         }
@@ -800,22 +800,111 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         pattern: &PatternNode,
         code: &SyntaxNode,
     ) -> Result<(), MatchFailed> {
-        if let Some(path) = ast::Path::cast(code.clone()) {
-            if let Some(ra_hir::PathResolution::Def(resolved_def)) = self.sema.resolve_path(&path) {
-                // TODO: Handle more than just paths to functions.
-                if let ra_hir::ModuleDef::Function(fn_def) = resolved_def {
-                    if let Some(module) = resolved_def.module(self.sema.db) {
-                        let mut full_path = self.module_path(&module);
-                        full_path.push(SmolStr::new(fn_def.name(self.sema.db).to_string()));
-                        if pattern.matches_path(&full_path) {
-                            return Ok(());
+        // Start by doing a straight-up matching of tokens. That way any match-failure reasons will
+        // be related to failure to resolve paths or similar reasons, which are more likely to be
+        // surprising and interesting.
+        if self.attempt_match_node_children(pattern, code).is_ok() {
+            return Ok(());
+        }
+
+        // Paths may contain paths. Find the first (left-most) path and work with that. It has the
+        // greatest chance of being able to be resolved anyway.
+
+        let path = ast::Path::cast(inner_most_path(code.clone()))
+            .ok_or_else(|| match_error!("Failed to convert node to ast::Path"))?;
+        if let Some(ra_hir::PathResolution::Def(resolved_def)) = self.sema.resolve_path(&path) {
+            let module = resolved_def.module(self.sema.db).ok_or_else(|| {
+                match_error!("Couldn't find module for '{}'", path.syntax().text())
+            })?;
+            self.attempt_match_resolved_path(pattern, &mut self.module_path(&module), code)?;
+        } else {
+            fail_match!("Couldn't resolve");
+        }
+        Ok(())
+    }
+
+    // Finds the first token in `code`, then matches `resolved_path` against `pattern` before
+    // continuing with `code`.
+    fn attempt_match_resolved_path(
+        &mut self,
+        pattern: &PatternNode,
+        resolved_path: &[SmolStr],
+        code: &SyntaxNode,
+    ) -> Result<(), MatchFailed> {
+        let mut pattern_children = pattern.children.iter();
+        let mut code_children = code.children_with_tokens();
+        match (pattern_children.next(), &code_children.next()) {
+            (Some(PatternTree::Node(p)), Some(SyntaxElement::Node(c))) => {
+                match (p.kind, c.kind()) {
+                    (SyntaxKind::PATH, SyntaxKind::PATH) => {
+                        self.attempt_match_resolved_path(p, resolved_path, &c)?;
+                    }
+                    (SyntaxKind::PATH, SyntaxKind::PATH_SEGMENT) => {
+                        self.attempt_match_resolved_path_prefix(
+                            p,
+                            &mut resolved_path.iter().peekable(),
+                        )?;
+                        // Reset code back to the start of the path, since the PATH_SEGMENT will need to
+                        // be consumed by subsequent parts of the pattern.
+                        code_children = code.children_with_tokens();
+                        // Advance pattern past the :: that should come next.
+                        match pattern_children.next() {
+                            Some(PatternTree::Token(Token {
+                                kind: SyntaxKind::COLON2,
+                                ..
+                            })) => {}
+                            Some(p) => {
+                                fail_match!(
+                                    "Unexpected element in pattern. Expected '::', found {}",
+                                    p
+                                );
+                            }
+                            None => {
+                                fail_match!(
+                                    "Unexpected end of pattern children while looking for '::'"
+                                );
+                            }
+                        }
+                    }
+                    (p, c) => fail_match!("Unhandled pattern child pair {:?}, {:?}", p, c),
+                }
+            }
+            (Some(PatternTree::Placeholder(_)), _) => {
+                fail_match!("Placeholders in patterns aren't yet supported")
+            }
+            (p, c) => fail_match!("Unhandled pattern child pair {:?}, {:?}", p, c),
+        }
+        self.attempt_match_sequences(pattern_children, code_children)
+    }
+
+    fn attempt_match_resolved_path_prefix<'p>(
+        &self,
+        pattern: &'p PatternNode,
+        path: &mut std::iter::Peekable<std::slice::Iter<SmolStr>>,
+    ) -> Result<(), MatchFailed> {
+        for p in &pattern.children {
+            match p {
+                PatternTree::Node(n) => self.attempt_match_resolved_path_prefix(&n, path)?,
+                PatternTree::Token(t) => {
+                    if t.kind == SyntaxKind::IDENT {
+                        let path_next = path.next().ok_or_else(|| {
+                            match_error!("Pattern '{}' didn't match to anything", t.text)
+                        })?;
+                        if t.text != *path_next {
+                            fail_match!(
+                                "Pattern had '{}', path resolved from code, had '{}'",
+                                t.text,
+                                path_next
+                            )
                         }
                     }
                 }
+                PatternTree::Placeholder(_) => {
+                    fail_match!("Matching placeholders to resolved paths is not supported")
+                }
             }
         }
-        // Fall back to regular matching.
-        self.attempt_match_node_children(pattern, code)
+        Ok(())
     }
 
     // We want to allow the records to match in any order, so we have special matching logic for
@@ -844,14 +933,13 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
                         return self.attempt_match_node_children(pattern, code);
                     }
                     if let Some(ident) = name_node.ident() {
-                        if let Some(code_record) = fields_by_name.remove(ident) {
-                            self.attempt_match_node(p, &code_record)?;
-                        } else {
-                            fail_match!(
+                        let code_record = fields_by_name.remove(ident).ok_or_else(|| {
+                            match_error!(
                                 "Placeholder has record field '{}', but code doesn't",
                                 ident
-                            );
-                        }
+                            )
+                        })?;
+                        self.attempt_match_node(p, &code_record)?;
                     }
                 }
             }
@@ -953,6 +1041,16 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         }
         Ok(())
     }
+}
+
+// Returns the left most path node in `path` (possibly `path`).
+fn inner_most_path(path: SyntaxNode) -> SyntaxNode {
+    if let Some(SyntaxElement::Node(first_child)) = path.first_child_or_token() {
+        if first_child.kind() == SyntaxKind::PATH {
+            return inner_most_path(first_child);
+        }
+    }
+    path
 }
 
 fn next_non_trivial(code_it: &mut ra_syntax::SyntaxElementChildren) -> Option<SyntaxElement> {
@@ -1480,6 +1578,26 @@ mod tests {
             }
             "#;
         assert_matches("a::b::c($a)", code, &["c(42)"]);
+    }
+
+    #[test]
+    fn match_resolved_type_name() {
+        let code = r#"
+            mod m1 {
+                pub mod m2 {
+                    pub trait Foo<T> {}
+                }
+            }
+            mod m3 {
+                trait Foo<T> {}
+                fn f1(f: Option<&dyn Foo<bool>>) {}
+            }
+            mod m4 {
+                use crate::m1::m2::Foo;
+                fn f1(f: Option<&dyn Foo<i32>>) {}
+            }
+            "#;
+        assert_matches("m1::m2::Foo<$t>", code, &["Foo<i32>"]);
     }
 
     #[test]
