@@ -214,7 +214,27 @@ fn parse_constraint(tokens: &mut std::vec::IntoIter<Token>) -> Result<Constraint
                     _ => bail!("Unexpected token '{}' while parsing constraint", token.text),
                 }
             }
-            Ok(Constraint::ExprType(path))
+            Ok(Constraint::Type(path))
+        }
+        "kind" => {
+            expect_token(tokens, "(")?;
+            let t = tokens
+                .next()
+                .ok_or_else(|| Error::new("Unexpected end of constraint while looking for kind"))?;
+            if t.kind != SyntaxKind::IDENT {
+                bail!(
+                    "Expected ident, found {:?} while parsing kind constraint",
+                    t.kind
+                );
+            }
+            expect_token(tokens, ")")?;
+            Ok(Constraint::Kind(NodeKind::from(&t.text)?))
+        }
+        "not" => {
+            expect_token(tokens, "(")?;
+            let sub = parse_constraint(tokens)?;
+            expect_token(tokens, ")")?;
+            Ok(Constraint::Not(Box::new(sub)))
         }
         x => bail!("Unsupported constraint type {}", x),
     }
@@ -482,7 +502,33 @@ struct Placeholder {
 
 #[derive(Clone, Debug)]
 enum Constraint {
-    ExprType(Vec<SmolStr>),
+    Type(Vec<SmolStr>),
+    Kind(NodeKind),
+    Not(Box<Constraint>),
+}
+
+#[derive(Clone, Debug)]
+enum NodeKind {
+    Literal,
+}
+
+impl NodeKind {
+    fn from(name: &SmolStr) -> Result<NodeKind, Error> {
+        Ok(match name.as_str() {
+            "literal" => NodeKind::Literal,
+            _ => bail!("Unknown node kind '{}'", name),
+        })
+    }
+
+    fn matches(&self, node: &SyntaxNode) -> Result<(), MatchFailed> {
+        let ok = match self {
+            Self::Literal => ast::Literal::can_cast(node.kind()),
+        };
+        if !ok {
+            fail_match!("Code '{}' isn't of kind {:?}", node.text(), self);
+        }
+        Ok(())
+    }
 }
 
 // An "error" indicating that matching failed. Use the fail_match! macro to create and return this.
@@ -748,12 +794,8 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         code: &SyntaxNode,
     ) -> Result<(), MatchFailed> {
         match constraint {
-            Constraint::ExprType(constraint_path) => {
-                let expr = ast::Expr::cast(code.clone())
-                    .ok_or_else(|| match_error!("Not an expression `{}`", code.text()))?;
-                let ty = self.sema.type_of_expr(&expr).ok_or_else(|| {
-                    match_error!("Couldn't get expression type for code `{}`", code.text())
-                })?;
+            Constraint::Type(constraint_path) => {
+                let ty = self.node_type(code)?;
                 let ty_path = self.get_type_path(&ty)?;
                 if ty_path != constraint_path.as_slice() {
                     fail_match!(
@@ -763,8 +805,33 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
                     );
                 }
             }
+            Constraint::Kind(kind) => {
+                kind.matches(code)?;
+            }
+            Constraint::Not(sub) => {
+                if self.validate_constraint(&*sub, code).is_ok() {
+                    fail_match!("Constraint {:?} failed for '{}'", constraint, code.text());
+                }
+            }
         }
         Ok(())
+    }
+
+    fn node_type(&self, code: &SyntaxNode) -> Result<ra_hir::Type, MatchFailed> {
+        if let Some(expr) = ast::Expr::cast(code.clone()) {
+            self.sema.type_of_expr(&expr).ok_or_else(|| {
+                match_error!("Couldn't get expression type for code `{}`", code.text())
+            })
+        } else if let Some(pat) = ast::Pat::cast(code.clone()) {
+            self.sema
+                .type_of_pat(&pat)
+                .ok_or_else(|| match_error!("Couldn't get pat type for code `{}`", code.text()))
+        } else {
+            fail_match!(
+                "Placeholder requested type of unsupported node {:?}",
+                code.kind()
+            )
+        }
     }
 
     fn get_type_path(&self, ty: &ra_hir::Type) -> Result<Vec<SmolStr>, MatchFailed> {
@@ -1470,6 +1537,15 @@ mod tests {
     }
 
     #[test]
+    fn match_struct_definition() {
+        assert_matches(
+            "struct $n {$f: Option<String>}",
+            "struct Bar {} struct Foo {name: Option<String>}",
+            &["struct Foo {name: Option<String>}"],
+        );
+    }
+
+    #[test]
     fn match_expr() {
         let code = "fn f() -> i32 {foo(40 + 2, 42)}";
         assert_matches("foo($a, $b)", code, &["foo(40 + 2, 42)"]);
@@ -1598,6 +1674,60 @@ mod tests {
             }
             "#;
         assert_matches("m1::m2::Foo<$t>", code, &["Foo<i32>"]);
+    }
+
+    #[test]
+    fn match_resolved_pat_type() {
+        let code = r#"
+            mod m1 {
+                pub mod m2 {
+                    pub enum Animal {Cat, Dog(i32)}
+                }
+            }
+            mod m3 {
+                pub enum Animal {Cat, Dog(i32)}
+                fn f1(a1: Animal) {
+                    if let Animal::Dog(5) = a1 {}
+                }
+            }
+            mod m4 {
+                use crate::m1::m2::Animal;
+                fn f1(a2: Animal) {
+                    if let Animal::Dog(42) = a2 {}
+                }
+            }
+            "#;
+        // The matches all from from m4, since the more or less identical code in m3 has a different
+        // Animal type. We match the function argument `a2`, the destructuring pattern and the
+        // variable reference.
+        assert_matches(
+            "${a:type(m1::m2::Animal)}",
+            code,
+            &["a2", "Animal::Dog(42)", "a2"],
+        );
+    }
+
+    #[test]
+    fn literal_constraint() {
+        let code = r#"
+            fn f1() {
+                let x1 = Some(42);
+                let x2 = Some("foo");
+                let x3 = Some(x1);
+                let x4 = Some(40 + 2);
+                let x5 = Some(true);
+            }
+            "#;
+        assert_matches(
+            "Some(${a:kind(literal)})",
+            code,
+            &["Some(42)", "Some(\"foo\")", "Some(true)"],
+        );
+        assert_matches(
+            "Some(${a:not(kind(literal))})",
+            code,
+            &["Some(x1)", "Some(40 + 2)"],
+        );
     }
 
     #[test]
