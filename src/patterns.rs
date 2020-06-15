@@ -101,7 +101,7 @@ pub(crate) fn parse_pattern(
     pattern_str: &str,
     remove_whitespace: bool,
 ) -> Result<Vec<PatternElement>, Error> {
-    let mut result = Vec::new();
+    let mut res = Vec::new();
     let mut placeholder_names = HashSet::new();
     let mut tokens = tokenize(pattern_str)?.into_iter();
     while let Some(token) = tokens.next() {
@@ -110,14 +110,16 @@ pub(crate) fn parse_pattern(
             if !placeholder_names.insert(placeholder.ident.clone()) {
                 bail!("Duplicate placeholder: ${}", placeholder.ident);
             }
-            result.push(PatternElement::Placeholder(placeholder));
+            res.push(PatternElement::Placeholder(placeholder));
         } else if !remove_whitespace || token.kind != SyntaxKind::WHITESPACE {
-            result.push(PatternElement::Token(token));
+            res.push(PatternElement::Token(token));
         }
     }
-    Ok(result)
+    Ok(res)
 }
 
+/// Checks for errors in a rule. e.g. the replace pattern referencing placeholders that the search
+/// pattern didn't define.
 pub(crate) fn validate_rule(
     pattern: &[PatternElement],
     replacement: &[PatternElement],
@@ -148,6 +150,7 @@ pub(crate) fn validate_rule(
     Ok(())
 }
 
+/// Creates a search pattern tree of some particular kind - e.g. an expression or a type.
 pub(crate) fn create_pattern_tree(
     tokens: &[PatternElement],
     fragment_kind: ra_parser::FragmentKind,

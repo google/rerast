@@ -12,23 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use argh::FromArgs;
-use fmt::Debug;
-use ra_db::{FileId, FileRange};
-use ra_syntax::ast::{self, AstNode};
-use ra_syntax::{SyntaxNode, TextSize};
-use std::fmt;
-
 mod matching;
 mod patterns;
 mod replacing;
 
+use argh::FromArgs;
+use fmt::Debug;
 use matching::{Match, SearchTrees};
-
-#[derive(Debug, Eq, PartialEq)]
-struct Error {
-    message: String,
-}
+use ra_db::{FileId, FileRange};
+use ra_syntax::ast;
+use ra_syntax::{SyntaxNode, TextSize};
+use std::fmt;
 
 /// Searches a crate for pattern matches and possibly replaces them with something else.
 struct MatchFinder<'db> {
@@ -40,25 +34,17 @@ struct MatchFinder<'db> {
     sema: ra_hir::Semantics<'db, ra_ide_db::RootDatabase>,
 }
 
-/// Information about the search we're currently doing. We enter a nested scope each time we encounter a macro call. The inner scope
+/// Information about the search we're currently doing. We enter a nested scope each time we
+/// encounter a macro call.
 struct SearchScope<'a> {
     search: &'a SearchTrees,
     root_module: &'a ra_hir::Module,
     restrict_range: Option<FileRange>,
 }
 
-impl Error {
-    fn new(message: impl Into<String>) -> Error {
-        Error {
-            message: message.into(),
-        }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
+#[derive(Debug, Eq, PartialEq)]
+struct Error {
+    message: String,
 }
 
 impl<'db> MatchFinder<'db> {
@@ -82,6 +68,7 @@ impl<'db> MatchFinder<'db> {
         code: &SyntaxNode,
         matches_out: &mut Vec<Match>,
     ) {
+        use ast::AstNode;
         let debug_active =
             self.debug_snippet.is_some() && Some(code.text().to_string()) == self.debug_snippet;
         if debug_active {
@@ -140,7 +127,7 @@ impl<'db> MatchFinder<'db> {
     fn find_match_str(&self, pattern_str: &str, file_id: FileId) -> Result<Vec<String>, Error> {
         let mut matches = Vec::new();
         let file = self.sema.parse(file_id);
-        let code = file.syntax();
+        let code = ast::AstNode::syntax(&file);
         self.find_matches(
             &SearchScope {
                 search: &SearchTrees::new(&patterns::parse_pattern(pattern_str, true)?),
@@ -165,7 +152,7 @@ impl<'db> MatchFinder<'db> {
         let replacement = patterns::parse_pattern(replacement, false)?;
         patterns::validate_rule(&search, &replacement)?;
         let file = self.sema.parse(file_id);
-        let code = file.syntax();
+        let code = ast::AstNode::syntax(&file);
         let mut matches = Vec::new();
         self.find_matches(
             &SearchScope {
@@ -185,6 +172,20 @@ impl<'db> MatchFinder<'db> {
             replacing::matches_to_edit(&matches, &replacement, &file_source, TextSize::from(0));
         edit.apply(&mut file_source);
         Ok(Some(file_source))
+    }
+}
+
+impl Error {
+    fn new(message: impl Into<String>) -> Error {
+        Error {
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.message)
     }
 }
 

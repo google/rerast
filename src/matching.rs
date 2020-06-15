@@ -13,12 +13,12 @@
 // limitations under the License.
 
 ///! This module is responsible for checking if code matches a pattern.
-use super::SearchScope;
 use crate::patterns::{
     self, Constraint, InvalidPatternTree, PatternElement, PatternNode, PatternTree, Token,
 };
+use crate::SearchScope;
 use ra_db::FileRange;
-use ra_syntax::ast::{self, AstNode};
+use ra_syntax::ast;
 use ra_syntax::{SmolStr, SyntaxElement, SyntaxKind, SyntaxNode, TextRange};
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -99,7 +99,7 @@ pub(crate) fn get_match(
     sema: &ra_hir::Semantics<ra_ide_db::RootDatabase>,
 ) -> Option<Match> {
     RECORDING_MATCH_FAIL_REASONS.with(|c| c.set(debug_active));
-    let result = match MatchState::try_match(search_scope, code, sema) {
+    let res = match MatchState::try_match(search_scope, code, sema) {
         Ok(state) => Some(Match {
             range: sema.original_range(code).range,
             matched_node: code.clone(),
@@ -117,7 +117,7 @@ pub(crate) fn get_match(
         }
     };
     RECORDING_MATCH_FAIL_REASONS.with(|c| c.set(false));
-    result
+    res
 }
 
 /// State used while attempting to match our search pattern against a particular node of the AST.
@@ -322,6 +322,7 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
     }
 
     fn node_type(&self, code: &SyntaxNode) -> Result<ra_hir::Type, MatchFailed> {
+        use ast::AstNode;
         if let Some(expr) = ast::Expr::cast(code.clone()) {
             self.sema.type_of_expr(&expr).ok_or_else(|| {
                 match_error!("Couldn't get expression type for code `{}`", code.text())
@@ -371,6 +372,7 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         pattern: &PatternNode,
         code: &SyntaxNode,
     ) -> Result<(), MatchFailed> {
+        use ast::AstNode;
         // Start by doing a straight-up matching of tokens. That way any match-failure reasons will
         // be related to failure to resolve paths or similar reasons, which are more likely to be
         // surprising and interesting.
@@ -485,6 +487,7 @@ impl<'db, 'sema> MatchState<'db, 'sema> {
         pattern: &PatternNode,
         code: &SyntaxNode,
     ) -> Result<(), MatchFailed> {
+        use ast::AstNode;
         // Build a map keyed by field name.
         let mut fields_by_name = HashMap::new();
         for child in code.children() {
@@ -672,6 +675,7 @@ impl SearchTrees {
     }
 
     pub(crate) fn tree_for_kind(&self, kind: SyntaxKind) -> Result<&PatternNode, MatchFailed> {
+        use ast::AstNode;
         let tree = if ast::Expr::can_cast(kind) {
             &self.expr
         } else if ast::TypeRef::can_cast(kind) {
@@ -694,6 +698,7 @@ impl SearchTrees {
 
 impl patterns::NodeKind {
     fn matches(&self, node: &SyntaxNode) -> Result<(), MatchFailed> {
+        use ast::AstNode;
         let ok = match self {
             Self::Literal => ast::Literal::can_cast(node.kind()),
         };
