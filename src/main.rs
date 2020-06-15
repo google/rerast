@@ -338,8 +338,6 @@ mod tests {
         assert_no_match("foo($a)", code);
     }
 
-    // Make sure that when a placeholder has a choice of several nodes that it could consume, that
-    // it doesn't consume too early and then fail the rest of the match.
     #[test]
     fn match_nested_method_calls() {
         assert_matches(
@@ -396,9 +394,7 @@ mod tests {
             "fn f() {Foo {bar: 1, baz: 2}}",
             &["Foo {bar: 1, baz: 2}"],
         );
-        // Now with placeholders for all parts of the struct. If we're not careful here, then $a
-        // will consume the whole record field (`bar: 1`) then the `:` in the pattern will fail to
-        // match.
+        // Now with placeholders for all parts of the struct.
         assert_matches(
             "Foo {$a: $b, $c: $d}",
             "fn f() {Foo {bar: 1, baz: 2}}",
