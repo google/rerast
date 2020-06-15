@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-///! This module is responsible for applying a replacement pattern based on matches found by the
-///! matching module.
+// This module is responsible for applying a replacement pattern based on matches found by the
+// matching module. We produce an that replaces each top-level match with its replacement. Inner
+// matches are applied as part of their respective top-level replacements.
+
 use crate::matching::Match;
 use crate::patterns::PatternElement;
 use ra_syntax::TextSize;

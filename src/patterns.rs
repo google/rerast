@@ -12,7 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-///! This module is responsible for parsing and validation of search and replace patterns.
+// This module is responsible for parsing and validation of search and replace patterns. Search and
+// replace patterns are initially parsed as tokens, then placeholders are parsed giving us a
+// sequence of `PatternElement`s. For replacement patterns this is as far as we go. For search
+// patterns we then parse this as an expression, type, pattern, item etc for use when we encounter
+// that kind of node. Some of these will fail, which means the pattern can't match those kinds of
+// nodes.
+
 use crate::Error;
 use ra_syntax::{SmolStr, SyntaxKind};
 use std::collections::HashSet;
