@@ -1,33 +1,34 @@
 # Rerast
 
-[![Latest Version](https://img.shields.io/crates/v/rerast.svg)](https://crates.io/crates/rerast)
-[![Build Status](https://travis-ci.org/google/rerast.svg?branch=master)](https://travis-ci.org/google/rerast)
-
 Rerast is a search/replace tool for Rust code using rules. A rule consists of a
 search pattern, a replacement and possibly some placeholders that can appear in
 both the search pattern and the replacement. Matching is done on syntax, not on
 text, so formatting doesn't matter. Placeholders are typed and must match the
 type found in the code for the rule to apply.
 
+Rerast is deprecated. We suggest using the [Structured Search
+Replace](https://rust-analyzer.github.io/manual.html#structural-seach-and-replace) feature available
+in rust-analyzer. It is available either in vscode or from the command line (and possibly also vim).
+If you are missing any particular feature that Rerast supported (or didn't), please comment on [this
+issue](https://github.com/rust-analyzer/rust-analyzer/issues/3186).
+
+If you'd like to still use Rerast, we suggest using Rerast version 0.1.88 with Rust version
+nightly-2020-02-27. There are a few newer version of Rerast, but there are some broken features in
+the newer versions.
+
 ## Installation
 
-Ensuring you have the latest nightly toolchain installed (`rustup update nightly`) simply run:
-
 ```sh
-cargo +nightly install rerast
-```
-
-You also need the rustc-dev component installed for the nightly compiler. To get this, run:
-
-```sh
-rustup component add --toolchain nightly rustc-dev
+rustup toolchain add nightly-2020-02-27
+rustup component add --toolchain nightly-2020-02-27 rustc-dev
+cargo +nightly-2020-02-27 install --version 0.1.88 rerast
 ```
 
 ## Usage
 
 Basic operations can be performed entirely from the command line
 ```sh
-cargo +nightly rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --diff
+cargo +nightly-2020-02-27 rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --diff
 ```
 
 Alternatively you can put your rule in a Rust file
@@ -39,20 +40,20 @@ fn rule1(a: i32) {
 then use
 
 ```sh
-cargo +nightly rerast --rules_file=my_rules.rs
+cargo +nightly-2020-02-27 rerast --rules_file=my_rules.rs
 ```
 Putting your rules in a file is required if you want to apply multiple rules at once.
 
 If you'd like to actually update your files, that can be done as follows:
 
 ```sh
-cargo +nightly rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --force --backup
+cargo +nightly-2020-02-27 rerast --placeholders 'a: i32' --search 'a + 1' --replace_with 'a - 1' --force --backup
 ```
 
 You can control which compilation roots rerast will inject the rule into using the `--file` argument, e.g.:
 
 ```sh
-cargo +nightly rerast --rules_file=my_rules.rs --targets tests --file tests/testsuite/main.rs --diff
+cargo +nightly-2020-02-27 rerast --rules_file=my_rules.rs --targets tests --file tests/testsuite/main.rs --diff
 ```
 
 Here's a more complex example
@@ -127,7 +128,7 @@ If you're about to make a change multiple times throughout your source code and 
 you can commit (or stage) your changes, make one edit then run:
 
 ```sh
-cargo +nightly rerast --replay_git --diff
+cargo +nightly-2020-02-27 rerast --replay_git --diff
 ```
 
 This will locate the changed expression in your project (of which there should be only one) then try
