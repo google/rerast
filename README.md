@@ -7,7 +7,7 @@ text, so formatting doesn't matter. Placeholders are typed and must match the
 type found in the code for the rule to apply.
 
 Rerast is deprecated. We suggest using the [Structured Search
-Replace](https://rust-analyzer.github.io/manual.html#structural-seach-and-replace) feature available
+Replace](https://rust-analyzer.github.io/manual.html#structural-search-and-replace) feature available
 in rust-analyzer. It is available either in vscode or from the command line (and possibly also vim).
 If you are missing any particular feature that Rerast supported (or didn't), please comment on [this
 issue](https://github.com/rust-analyzer/rust-analyzer/issues/3186).
